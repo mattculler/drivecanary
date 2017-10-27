@@ -2,7 +2,7 @@ import sqlalchemy
 import json
 from datetime import datetime
 
-from data_classes import Host, BlockDev 
+from data_classes import Host, BlockDev, sqla_to_dict
 
 
 class PyvDb(object):
@@ -43,7 +43,7 @@ class PyvDb(object):
           serial=blkdev["serial"],
           model=blkdev["model"], 
           kern_name=blkdev["kname"],
-          spinning_rust=int(blkdev["rota"]),
+          is_spinning_rust=int(blkdev["rota"]),
           label=blkdev["label"],
           size_bytes=blkdev["size"],
           fs_type=blkdev["fstype"],
@@ -53,7 +53,7 @@ class PyvDb(object):
           first_seen=datetime.now()))
       else:
         # Update anything that has changed
-        print("Updating disk " + hostname)
+        print("Updating disk " + blkdev["serial"])
         dbdev = self._session.query(BlockDev).filter_by(serial=blkdev["serial"]).first()
         dbdev.last_seen = datetime.now()
         dbdev.kern_name = blkdev["kname"]
@@ -64,4 +64,10 @@ class PyvDb(object):
 
     self._session.commit()
 
+    
+  def get_blockdevs(self):
+    blkdevs = []
+    for blkdev in self._session.query(BlockDev).all():
+      blkdevs.append(sqla_to_dict(blkdev))
+    return blkdevs
     

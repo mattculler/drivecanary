@@ -59,6 +59,5 @@ if __name__ == "__main__":
     disk_json = json.loads(json_str)
     #print(json.dumps(disk_json, indent=2))
     db.add_blockdevs(hostname, disk_json)
-
   
   del p

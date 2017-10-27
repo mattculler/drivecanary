@@ -34,3 +34,7 @@ class BlockDev(Base):
   host = Column(String, ForeignKey("Hosts.name"), nullable=False)
   parent_id = Column(Integer, ForeignKey("BlockDevs.id")) # the disk that a partition belongs to, or the partitions composing a raid
 
+
+def sqla_to_dict(sqltype):
+  """Returns JSON from a sqlalchemy type (inherits from declarative_base)."""
+  return {c.name: getattr(sqltype, c.name) for c in sqltype.__table__.columns}

@@ -1,0 +1,43 @@
+<!doctype html>
+<html>
+  <head>
+    <title>PyvMind - Smarter than SMART&trade;!</title>
+
+    <link type="text/css" rel="stylesheet" href="/static/css/jsgrid.min.css" />
+    <link type="text/css" rel="stylesheet" href="/static/css/jsgrid-theme.min.css" />
+
+    <script type="text/javascript" src="https://code.jquery.com/jquery-3.2.1.min.js"></script>
+    <script type="text/javascript" src="/static/js/jsgrid.js"></script>
+    <script>
+      var blkdevs = {{ blkdevs | safe }};
+      $(document).ready(function() {
+        $("#grid").jsGrid({
+          width: "100%",
+          height: "400px",
+   
+          inserting: true,
+          editing: true,
+          sorting: true,
+          paging: true,
+   
+          data: blkdevs,
+  
+
+
+          fields: [
+            { name: "serial", type: "text", width: 150, validate: "required" },
+            { name: "model", type: "text", width: 50 },
+            { name: "kern_name", type: "text", width: 200 },
+            { name: "is_spinning_rust", type: "checkbox", title: "HDD", sorting: false },
+            { type: "control" }
+          ]
+        }); 
+      });
+    </script>
+  </head>
+  <body>
+    <p>hello whorl!</p>
+    <div id="grid">
+    </div>
+  </body>
+</html>
