@@ -3,41 +3,71 @@
   <head>
     <title>PyvMind - Smarter than SMART&trade;!</title>
 
+    <!-- Fpr the datagrid lib -->
     <link type="text/css" rel="stylesheet" href="/static/css/jsgrid.min.css" />
     <link type="text/css" rel="stylesheet" href="/static/css/jsgrid-theme.min.css" />
+    
+    <!-- Modal popup lib -->
+    <link type="text/css" rel="stylesheet" href="/static/css/tingle.css" />
 
+    <!-- No doy -->
     <script type="text/javascript" src="https://code.jquery.com/jquery-3.2.1.min.js"></script>
+
+    <!-- Neato little filesize lib, lots of options -->
+    <script type="text/javascript" src="https://cdn.filesizejs.com/filesize.js"></script>
+
+    <!-- Modal popup lib -->
+    <script type="text/javascript" src="/static/js/tingle.js"></script>
+
+    <!-- Datagrid lib -->
     <script type="text/javascript" src="/static/js/jsgrid.js"></script>
+    <script type="text/javascript" src="/static/js/jsgrid-pvymind-fields.js"></script>
     <script>
       var blkdevs = {{ blkdevs | safe }};
       $(document).ready(function() {
         $("#grid").jsGrid({
           width: "100%",
-          height: "400px",
+          height: "auto",
    
-          inserting: true,
-          editing: true,
+          inserting: false,
+          editing: false,
           sorting: true,
-          paging: true,
+//          paging: true,
    
           data: blkdevs,
-  
-
 
           fields: [
-            { name: "serial", type: "text", width: 150, validate: "required" },
-            { name: "model", type: "text", width: 50 },
-            { name: "kern_name", type: "text", width: 200 },
-            { name: "is_spinning_rust", type: "checkbox", title: "HDD", sorting: false },
-            { type: "control" }
-          ]
+            { name: "host", type: "text", width: "50", title: "Host" },
+            { name: "kern_name", type: "text", width: "40", title: "Node" },
+            { name: "size_bytes", type: "capacity", width: "50", title: "Size" },
+            { name: "is_spinning_rust", type: "disktype", width: "50", title: "Disk Type" },
+            { name: "model", type: "text"},
+            { name: "serial", type: "text" },
+            { name: "last_seen", type: "date", title: "Last Seen" },
+            { name: "first_seen", type: "date", title: "First Seen" }
+//            { name: "label", type: "text" }, 
+//            { name: "fs_type", type: "text" },
+          ],
+
+          rowClick: function(wrapt) {
+            var fields = wrapt.item;
+            var popup = new tingle.modal();
+            var content = $("<table>");
+            for (var key in fields) {
+              content.append("<tr>").append([
+                $("<td>" + key + "</td>"),
+                $("<td>" + fields[key] + "</td>")
+              ]);
+            }
+            popup.setContent(content[0]);
+            popup.open();
+          }
         }); 
       });
     </script>
   </head>
   <body>
-    <p>hello whorl!</p>
-    <div id="grid">
-    </div>
+    <h1>All Disks</h1>
+    <div id="grid"></div>
   </body>
 </html>
