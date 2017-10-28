@@ -1,0 +1,8 @@
+Up next:
+ * Get more detailed data on the disk from smartctl:
+   * smartctl -P show /dev/sdX
+   * Specifically I want the MODEL FAMILY (for display) and FIRMWARE (for drill-down)
+ * Make DB updates preserve previous values, like if a device shows up on a new host, under a new kname, with new partitions or under a new raid.
+   * https://stackoverflow.com/questions/3874199/how-to-store-historical-data
+ * Show partition and raid device in drill-down.
+ * Grab and show actual smart attributes.
