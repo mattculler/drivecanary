@@ -12,6 +12,7 @@
 
     <!-- No doy -->
     <script type="text/javascript" src="https://code.jquery.com/jquery-3.2.1.min.js"></script>
+    <script type="text/javascript" src="/static/js/underscore.js"></script>
 
     <!-- Neato little filesize lib, lots of options -->
     <script type="text/javascript" src="https://cdn.filesizejs.com/filesize.js"></script>
@@ -22,8 +23,19 @@
     <!-- Datagrid lib -->
     <script type="text/javascript" src="/static/js/jsgrid.js"></script>
     <script type="text/javascript" src="/static/js/jsgrid-pvymind-fields.js"></script>
+
     <script>
-      var blkdevs = {{ blkdevs | safe }};
+      blkdevs = {{ blkdevs | safe }};
+
+      // Prefer the model_family, if it exists
+      blkdevs.forEach(function(dev) {
+        var model = dev.model;
+        if (dev.model_family) {
+          model = dev.model_family;
+        }
+        dev.nice_model = model;
+      });
+
       $(document).ready(function() {
         $("#grid").jsGrid({
           width: "100%",
@@ -41,16 +53,16 @@
             { name: "kern_name", type: "text", width: "40", title: "Node" },
             { name: "size_bytes", type: "capacity", width: "50", title: "Size" },
             { name: "is_spinning_rust", type: "disktype", width: "50", title: "Disk Type" },
-            { name: "model", type: "text"},
+            { name: "nice_model", type: "text", width: "160", title: "Model" },
             { name: "serial", type: "text" },
-            { name: "last_seen", type: "date", title: "Last Seen" },
             { name: "first_seen", type: "date", title: "First Seen" }
-//            { name: "label", type: "text" }, 
-//            { name: "fs_type", type: "text" },
           ],
 
           rowClick: function(wrapt) {
-            var fields = wrapt.item;
+            // Show evey field that is not shown in the main grid
+            var propsToRemove = _.pluck(this.fields, "name");
+            var fields = _.omit(wrapt.item, propsToRemove);
+
             var popup = new tingle.modal();
             var content = $("<table>");
             for (var key in fields) {

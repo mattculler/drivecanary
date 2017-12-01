@@ -111,3 +111,5 @@ CapacityField.prototype = new jsGrid.Field({
 });
  
 jsGrid.fields.capacity = CapacityField;
+
+

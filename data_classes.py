@@ -18,12 +18,14 @@ class BlockDev(Base):
 
   id = Column(Integer, primary_key=True)
   serial = Column(String, unique=True) # unique serial of drive
-  model = Column(String) # drive model
-  is_spinning_rust = Column(Boolean, nullable=False)
+  model = Column(String) # drive model, from the kernel
+  is_spinning_rust = Column(Boolean, nullable=False) # is HDD?  (if false, is SSD)
   size_bytes = Column(BigInteger, nullable=False)
   type_ = Column(String, nullable=False) # disk, partition, raid0, etc
-  
-  # TODO: Changeable - move to own table?
+  model_family = Column(String) # for most drives, smartctl can give a user-friendly name
+  firmware = Column(String) # FW version
+
+  # TODO: Changeable, and a history would be useful - move to own table?
   fs_type = Column(String)
   label = Column(String) # disk label
   kern_name = Column(String, nullable=False) # sda, md0, etc. NOT unique over all hosts

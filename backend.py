@@ -4,6 +4,7 @@
 import os
 import paramiko
 import json
+import collections
 from datetime import datetime
 
 from data_classes import Host, BlockDev, sqla_to_dict
@@ -52,14 +53,26 @@ class Puppetmaster(object):
     """Returns smartctl drive details for the host and device.
     kern_name is just the node name, not a path.
     """
+    def _all_upper_or_space(key):
+      for char in key:
+        if not char.isupper() and not char.isspace():
+          return False
+      return True
+
     client = self._host_pool[hostname]
     stdin, stdout, stderr = client.exec_command("smartctl -P show /dev/{0}".format(kern_name))
-    details = {}
+
+    # Returns a defaultdict because not all drives have the same set of keys, and that's ok
+    details = collections.defaultdict(lambda: None)
     for detail_line in stdout.read().decode("utf-8").splitlines():
       # Split string into two on the first colon - this fixes the case where there are other 
-      #  colons in the output
+      #  colons in the value.
       first_colon_i = detail_line.find(":")
       key = detail_line[:first_colon_i]
+      if not key or not _all_upper_or_space(key):
+        # This omits blank lines and also the informational, non-key/value output, which IMHO 
+        #  should have gone to stderr (smartmontools! <shakes fist>)
+        continue
       value = detail_line[first_colon_i + 1:].strip()
       details[key] = value
     return details
@@ -85,17 +98,22 @@ class DriveIndex(object):
 
         details = self._puppets.get_drive_details(hostname, blkdev["kname"])
 
+        print(hostname, blkdev["kname"])
+        print(json.dumps(details, indent=2))
+
         dev = BlockDev( 
           serial=blkdev["serial"], 
           model=blkdev["model"],  
-          kern_name=blkdev["kname"], 
           is_spinning_rust=int(blkdev["rota"]), 
-          label=blkdev["label"], 
           size_bytes=blkdev["size"], 
-          fs_type=blkdev["fstype"], 
           type_=blkdev["type"], 
-          host=hostname,
-          last_seen=datetime.now())
+          model_family=details["MODEL FAMILY"],
+          firmware=details["FIRMWARE"],
+          fs_type=blkdev["fstype"], 
+          label=blkdev["label"], 
+          kern_name=blkdev["kname"], 
+          last_seen=datetime.now(),
+          host=hostname)
         self._blockdevs.append(dev)
 
   def get_blockdevs(self):

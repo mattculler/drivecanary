@@ -9,7 +9,7 @@ from data_classes import *
 db_file = "pyvmind.db"
 
 if __name__ == "__main__":
-  if sys.argv[1] == "delete":
+  if len(sys.argv) > 1 and sys.argv[1] == "delete":
     print("Removing " + db_file)
     os.remove(db_file)
 

@@ -6,3 +6,7 @@ Up next:
    * https://stackoverflow.com/questions/3874199/how-to-store-historical-data
  * Show partition and raid device in drill-down.
  * Grab and show actual smart attributes.
+ * Graph SMART attributes over time:
+   * https://frappe.github.io/charts/
+ * Notifications when there are drive issues?
+   * https://notifyjs.com/
