@@ -1,6 +1,7 @@
 import util
 
-class SmartTest(object):
+class SmartRun(object):
+  """Data structure that parses and represents the output of smartctl -a /dev/whatever"""
 
   def __init__(self, text_file=None):
     # Everything gets parsed out into these members
@@ -108,4 +109,4 @@ class SmartTest(object):
 
 
 # DELETEME - testing only
-SmartTest("testdata/storage2.smart")
+SmartRun("testdata/storage2.smart")
