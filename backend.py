@@ -7,6 +7,7 @@ import json
 import collections
 from datetime import datetime
 
+import util
 from data_classes import Host, BlockDev, sqla_to_dict
 from db import PyvDb
 
@@ -67,13 +68,11 @@ class Puppetmaster(object):
     for detail_line in stdout.read().decode("utf-8").splitlines():
       # Split string into two on the first colon - this fixes the case where there are other 
       #  colons in the value.
-      first_colon_i = detail_line.find(":")
-      key = detail_line[:first_colon_i]
+      key, value = util.split_on_first(":", detail_line)
       if not key or not _all_upper_or_space(key):
         # This omits blank lines and also the informational, non-key/value output, which IMHO 
         #  should have gone to stderr (smartmontools! <shakes fist>)
         continue
-      value = detail_line[first_colon_i + 1:].strip()
       details[key] = value
     return details
       

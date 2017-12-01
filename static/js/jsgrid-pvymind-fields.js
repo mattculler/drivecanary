@@ -1,3 +1,6 @@
+// See docs:
+//  http://js-grid.com/docs/
+
 var DiskTypeField = function(config) {
   jsGrid.Field.call(this, config);
 };
