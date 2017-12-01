@@ -3,14 +3,14 @@
 import json
 from flask import Flask, request, render_template
 
-from pyvdb import PyvDb
+from db import PyvDb
 
 app = Flask(__name__)
-db = PyvDb()
+pyvdb = PyvDb()
 
 @app.route("/getblkdevs")
 def get_blkdevs():
-  blkdevs = db.get_blockdevs()
+  blkdevs = pyvdb.get_blockdevs()
   return json.dumps(blkdevs)
 
 
@@ -25,7 +25,7 @@ def json_serial(obj):
 
 @app.route("/")
 def index():
-  blkdevs = db.get_blockdevs()
+  blkdevs = pyvdb.get_blockdevs()
   return render_template("index.html", blkdevs=json.dumps(blkdevs, default=json_serial))
 
 if __name__ == "__main__":

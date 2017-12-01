@@ -19,12 +19,14 @@ class BlockDev(Base):
   id = Column(Integer, primary_key=True)
   serial = Column(String, unique=True) # unique serial of drive
   model = Column(String) # drive model
-  kern_name = Column(String, nullable=False) # sda, md0, etc. NOT unique over all hosts
   is_spinning_rust = Column(Boolean, nullable=False)
-  label = Column(String) # disk label
   size_bytes = Column(BigInteger, nullable=False)
-  fs_type = Column(String)
   type_ = Column(String, nullable=False) # disk, partition, raid0, etc
+  
+  # TODO: Changeable - move to own table?
+  fs_type = Column(String)
+  label = Column(String) # disk label
+  kern_name = Column(String, nullable=False) # sda, md0, etc. NOT unique over all hosts
   
   last_seen = Column(DateTime, nullable=False)
   first_seen = Column(DateTime, nullable=False)

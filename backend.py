@@ -4,17 +4,17 @@
 import os
 import paramiko
 import json
+from datetime import datetime
 
-from pyvdb import PyvDb
+from data_classes import Host, BlockDev, sqla_to_dict
+from db import PyvDb
 
 
 class Puppetmaster(object):
   """Controls all client connections."""
 
-  def __init__(self, db, hosts):
+  def __init__(self, hosts):
     """hosts - A list of hosts to open connections to."""
-    self._db = db
-
     self._config = paramiko.config.SSHConfig()
     with open("/etc/ssh/ssh_config", "r") as f:
       self._config.parse(f)
@@ -33,31 +33,87 @@ class Puppetmaster(object):
     client.connect(hostname, username=hostconfig["user"])
     self._host_pool[hostname] = client
 
-    db.add_host(hostname)
-
   def _janky_ansible(self, cmd):
     """lol"""
     for hostname, client in self._host_pool.items():
       stdin, stdout, stderr = client.exec_command(cmd)
       yield hostname, stdout.read().decode("utf-8")
-      #o = stdout.read().decode("utf-8")
-#      with open(hostname + ".smart", "w") as f:
-#        f.write(o)
-      #import ptpdb; ptpdb.set_trace()
-
 
   def __del__(self):
     for hostname, client in self._host_pool.items():
       client.close()
 
 
+  def get_lsblk_iterable(self):
+    """Yields a pair of (hostname, lsblk JSON) for each host."""
+    yield from self._janky_ansible("lsblk -Jbo KNAME,SIZE,FSTYPE,LABEL,MODEL,SERIAL,TYPE,ROTA,PKNAME")
+
+  def get_drive_details(self, hostname, kern_name):
+    """Returns smartctl drive details for the host and device.
+    kern_name is just the node name, not a path.
+    """
+    client = self._host_pool[hostname]
+    stdin, stdout, stderr = client.exec_command("smartctl -P show /dev/{0}".format(kern_name))
+    details = {}
+    for detail_line in stdout.read().decode("utf-8").splitlines():
+      # Split string into two on the first colon - this fixes the case where there are other 
+      #  colons in the output
+      first_colon_i = detail_line.find(":")
+      key = detail_line[:first_colon_i]
+      value = detail_line[first_colon_i + 1:].strip()
+      details[key] = value
+    return details
+      
+
+class DriveIndex(object):
+  """Owns the Puppetmaster, making several requests to it and aggregating drive data, making it 
+  ready to pass to the DB.
+  """
+
+  def __init__(self, hosts):
+    self._puppets = Puppetmaster(hosts)
+    self._blockdevs = []
+
+    # Create the sqlalchemy objects from the Puppetmaster results
+    for hostname, json_str in self._puppets.get_lsblk_iterable():
+      blockdev_json = json.loads(json_str)
+      for blkdev in blockdev_json["blockdevices"]:
+        if blkdev["serial"] is None:
+          # Skip non-disks for now (we'll be skipping mdadm arrays, mostly)
+          # TODO: Add these mdadm arrays to the dataset as well
+          continue 
+
+        details = self._puppets.get_drive_details(hostname, blkdev["kname"])
+
+        dev = BlockDev( 
+          serial=blkdev["serial"], 
+          model=blkdev["model"],  
+          kern_name=blkdev["kname"], 
+          is_spinning_rust=int(blkdev["rota"]), 
+          label=blkdev["label"], 
+          size_bytes=blkdev["size"], 
+          fs_type=blkdev["fstype"], 
+          type_=blkdev["type"], 
+          host=hostname,
+          last_seen=datetime.now())
+        self._blockdevs.append(dev)
+
+  def get_blockdevs(self):
+    """Yields each Blockdev."""
+    for dev in self._blockdevs:
+      yield dev
+
+
 if __name__ == "__main__":
-  db = PyvDb()
-  p = Puppetmaster(db, ["storage1", "storage2"])
-  
-  for hostname, json_str in p._janky_ansible("lsblk -Jbo KNAME,SIZE,FSTYPE,LABEL,MODEL,SERIAL,TYPE,ROTA,PKNAME"):
-    disk_json = json.loads(json_str)
-    #print(json.dumps(disk_json, indent=2))
-    db.add_blockdevs(hostname, disk_json)
-  
-  del p
+  pyvdb = PyvDb()
+ 
+  # Build data structures and update DB
+  hosts = ["storage1", "storage2"]
+  for host in hosts:
+    pyvdb.add_host(host)
+  drives = DriveIndex(hosts)
+
+  for dev in drives.get_blockdevs():
+    pyvdb.add_blockdev(dev)
+
+  del drives 
