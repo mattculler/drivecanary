@@ -98,9 +98,6 @@ class DriveIndex(object):
 
         details = self._puppets.get_drive_details(hostname, blkdev["kname"])
 
-        print(hostname, blkdev["kname"])
-        print(json.dumps(details, indent=2))
-
         dev = BlockDev( 
           serial=blkdev["serial"], 
           model=blkdev["model"],  
