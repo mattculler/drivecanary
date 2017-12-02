@@ -24,11 +24,16 @@ class BlockDev(Base):
   type_ = Column(String, nullable=False) # disk, partition, raid0, etc
   model_family = Column(String) # for most drives, smartctl can give a user-friendly name
   firmware = Column(String) # FW version
+  rpm = Column(String) # nullable, to account for SSD
+  ata_ver = Column(String)
+  sata_ver = Column(String)
+  smart_avail = Column(Boolean, nullable=False)
 
   # TODO: Changeable, and a history would be useful - move to own table?
   fs_type = Column(String)
   label = Column(String) # disk label
   kern_name = Column(String, nullable=False) # sda, md0, etc. NOT unique over all hosts
+  smart_enabled = Column(Boolean, nullable=False)
   
   last_seen = Column(DateTime, nullable=False)
   first_seen = Column(DateTime, nullable=False)

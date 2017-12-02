@@ -50,8 +50,47 @@ class Puppetmaster(object):
     """Yields a pair of (hostname, lsblk JSON) for each host."""
     yield from self._janky_ansible("lsblk -Jbo KNAME,SIZE,FSTYPE,LABEL,MODEL,SERIAL,TYPE,ROTA,PKNAME")
 
+
+  def get_drive_info(self, hostname, kern_name):
+    """Returns smartctl drive info for the host and device (smartctl -i /dev/whatever).
+    kern_name is just the node name, not a path.
+    """
+    client = self._host_pool[hostname]
+    stdin, stdout, stderr = client.exec_command("smartctl -i /dev/{0}".format(kern_name))
+
+    # Returns a defaultdict because all drives may not have the same set of keys, and that's ok
+    info = collections.defaultdict(lambda: None)
+    for info_line in stdout.read().decode("utf-8").splitlines():
+      # Split string into two on the first colon - this fixes the case where there are other 
+      #  colons in the value.
+      key, value = util.split_on_first(":", info_line)
+      if not key:
+        # This omits blank lines and also the informational, non-key/value output, which IMHO 
+        #  should have gone to stderr (smartmontools! <shakes fist>)
+        continue
+
+      # Special case - smart available and smart enabled would both wind up with the same key,  so we 
+      #  have to set them to something else.
+      if key == "SMART support is":
+        if "ambiguous" in value.lower():
+          # Let it be null
+          continue
+        elif "available" in value.lower():
+          key = "smart_avail"
+          value = ("Available" in value) # as opposed to "Unavailable"
+        elif "abled" in value:
+          key = "smart_enabled"
+          value = ("Enabled" in value) # as opposed to "Disabled", presumably
+      else:
+        # Not a bool
+        value = value.strip()
+
+      info[key] = value
+    return info
+    
+
   def get_drive_details(self, hostname, kern_name):
-    """Returns smartctl drive details for the host and device.
+    """Returns smartctl drive details for the host and device (smartctl -i /dev/whatever).
     kern_name is just the node name, not a path.
     """
     def _all_upper_or_space(key):
@@ -73,7 +112,7 @@ class Puppetmaster(object):
         # This omits blank lines and also the informational, non-key/value output, which IMHO 
         #  should have gone to stderr (smartmontools! <shakes fist>)
         continue
-      details[key] = value
+      details[key] = value.strip()
     return details
       
 
@@ -95,9 +134,10 @@ class DriveIndex(object):
           # TODO: Add these mdadm arrays to the dataset as well
           continue 
 
+        info = self._puppets.get_drive_info(hostname, blkdev["kname"])
         details = self._puppets.get_drive_details(hostname, blkdev["kname"])
 
-        dev = BlockDev( 
+        dev = BlockDev(
           serial=blkdev["serial"], 
           model=blkdev["model"],  
           is_spinning_rust=int(blkdev["rota"]), 
@@ -105,9 +145,14 @@ class DriveIndex(object):
           type_=blkdev["type"], 
           model_family=details["MODEL FAMILY"],
           firmware=details["FIRMWARE"],
+          rpm=info["Rotation Rate"],
+          ata_ver=info["ATA Version is"],
+          sata_ver=info["SATA Version is"],
+          smart_avail=info["smart_avail"],
           fs_type=blkdev["fstype"], 
           label=blkdev["label"], 
           kern_name=blkdev["kname"], 
+          smart_enabled=info["smart_enabled"],
           last_seen=datetime.now(),
           host=hostname)
         self._blockdevs.append(dev)

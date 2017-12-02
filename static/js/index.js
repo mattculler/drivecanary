@@ -32,18 +32,28 @@ $(document).ready(function() {
     ],
 
     rowClick: function(wrapt) {
+      // Build the heading and outer wrapper
+      var content = $("<div>");
+      content.append($("<h1>", {
+        html: wrapt.item.host + ": " + wrapt.item.kern_name
+      }));
+      content.append($("<h3>", {
+        html: wrapt.item.nice_model
+      }));
+
       // Show evey field that is not shown in the main grid
       var propsToRemove = _.pluck(this.fields, "name");
       var fields = _.omit(wrapt.item, propsToRemove);
 
       var popup = new tingle.modal();
-      var content = $("<table>");
-      for (var key in fields) {
-        content.append("<tr>").append([
+      var table = $("<table>");
+      _.each(_.sortBy(_.keys(fields)), function(key) {
+        table.append("<tr>").append([
           $("<td>" + key + "</td>"),
           $("<td>" + fields[key] + "</td>")
         ]);
-      }
+      });
+      content.append(table);
       popup.setContent(content[0]);
       popup.open();
     }
