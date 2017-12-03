@@ -63,7 +63,7 @@ class Puppetmaster(object):
     for info_line in stdout.read().decode("utf-8").splitlines():
       # Split string into two on the first colon - this fixes the case where there are other 
       #  colons in the value.
-      key, value = util.split_on_first(":", info_line)
+      key, value = util.split_on_first(info_line)
       if not key:
         # This omits blank lines and also the informational, non-key/value output, which IMHO 
         #  should have gone to stderr (smartmontools! <shakes fist>)
@@ -107,7 +107,7 @@ class Puppetmaster(object):
     for detail_line in stdout.read().decode("utf-8").splitlines():
       # Split string into two on the first colon - this fixes the case where there are other 
       #  colons in the value.
-      key, value = util.split_on_first(":", detail_line)
+      key, value = util.split_on_first(detail_line)
       if not key or not _all_upper_or_space(key):
         # This omits blank lines and also the informational, non-key/value output, which IMHO 
         #  should have gone to stderr (smartmontools! <shakes fist>)

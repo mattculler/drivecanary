@@ -13,12 +13,11 @@ class SmartRun(object):
     self._general_smart = []
     self._attributes_rev = None
     self._vendor_smart = {}
-#    self._errors = {
-#      "version": None,
-#      "error_count": None,
-#      "log": ""
-#    }
-    self._errors = ""
+    self._errors = {
+      "version": None,
+      "error_count": None,
+      "log": ""
+    }
     self._test_log = ""
     self._selective_test_log = ""
 
@@ -74,7 +73,7 @@ class SmartRun(object):
         # Skip the junk at the beginning
         pass
       elif section == "info":
-        key, value = util.split_on_first(":", line)
+        key, value = util.split_on_first(line)
         self._info[key] = value.strip()
         continue
       elif section == "overallhealth":
@@ -142,8 +141,17 @@ class SmartRun(object):
         }
         continue
       elif section == "error":
-        # TODO
-        self._errors += line + "\n"
+        if line.startswith("SMART Error Log Version:"):
+          _, ver = util.split_on_first(line)
+          self._errors["version"] = ver
+        elif line.startswith("No Errors Logged"):
+          self._errors["error_count"] = 0
+        elif line.startswith("ATA Error Count:"):
+          _, count = util.split_on_first(line)
+          self._errors["error_count"] = count
+        else:
+          # TODO - Parse the log further?
+          self._errors["log"] += line + "\n"
         continue
       elif section == "selftest":
         # TODO
@@ -162,7 +170,9 @@ class SmartRun(object):
         "general_smart": self._general_smart,
         "attributes_rev": self._attributes_rev,
         "vendor_smart": self._vendor_smart,
-        "errors": self._errors
+        "errors": self._errors,
+        "test_log": self._test_log,
+        "selective_test_log": self._selective_test_log
     }
 
 

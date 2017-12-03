@@ -1,4 +1,4 @@
-def split_on_first(delim, string):
+def split_on_first(string, delim=":"):
   """Splits the string on the first occurrence of the delimiter, and returns a 2-tuple.
   If the delimiter does not exist in the string, returns (None, None).
   """
