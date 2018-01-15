@@ -1,3 +1,6 @@
+from datetime import datetime
+import os
+
 import util
 
 class SmartRun(object):
@@ -176,13 +179,44 @@ class SmartRun(object):
     }
 
 
-# DELETEME - testing only
-import os
-import json
-for d in os.listdir("testdata"):
-  print()
-  print("*** OPERATING ON {0} ***".format(d))
-  print()
-  s = SmartRun(os.path.join("testdata", d))
+########################
+# Public functions, etc
+########################
 
-  print(json.dumps(s.to_json(), indent=2))
+SMART_SAVE_DIR = "smart_output"
+
+def write_run(serial, smart_a_text):
+  """Write out the text of the SMART run."""
+  # Make sure the drive's dir exists
+  drive_smart_dir = "{0}/{1}".format(SMART_SAVE_DIR, serial)
+  try:
+    os.makedirs(drive_smart_dir, exist_ok=True)
+  except OSError:
+    # Probably just means that the permissions of one of the existing dirs 
+    #  isn't 777.
+    pass
+
+  report_path = "{0}/{1}".format(drive_smart_dir, datetime.now().isoformat())
+  with open(report_path, "w") as f:
+    f.write(smart_a_text)
+
+def get_latest_run(serial):
+  """Returns a SmartRun object of the last SMART run performed."""
+  drive_smart_dir = "{0}/{1}".format(SMART_SAVE_DIR, serial)
+  latest_smart_run_file = "{0}/{1}".format(
+      drive_smart_dir, 
+      max(os.listdir(drive_smart_dir)))
+  return SmartRun(text_file=latest_smart_run_file)
+
+
+# DELETEME - testing only
+#if __name__ == "__main__":
+#  import os
+#  import json
+#  for d in os.listdir("testdata"):
+#    print()
+#    print("*** OPERATING ON {0} ***".format(d))
+#    print()
+#    s = SmartRun(os.path.join("testdata", d))
+#
+#    print(json.dumps(s.to_json(), indent=2))
