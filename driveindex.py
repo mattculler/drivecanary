@@ -187,14 +187,14 @@ class DriveIndex(object):
     """Yields SmartRun objects of the most recent SMART run for each drive.
     """
     for dev in self._blockdevs:
-      yield smartruns.get_latest_run(dev.serial)
+      yield dev, smartruns.get_latest_run(dev.serial)
 
   def get_latest_smart_per_drive_json(self):
     """Returns a list of SmartRun JSON objects of the most recent SMART run 
     for each drive.
     """
-    all_reports = []
-    for smartrun in self.get_latest_smart_per_drive():
-      all_reports.append(smartrun.to_json())
+    all_reports = {}
+    for dev, smartrun in self.get_latest_smart_per_drive():
+      all_reports[dev.serial] = smartrun.to_json()
     return all_reports
 

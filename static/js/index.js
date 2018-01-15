@@ -32,30 +32,70 @@ $(document).ready(function() {
     ],
 
     rowClick: function(wrapt) {
-      // Build the heading and outer wrapper
-      var content = $("<div>");
-      content.append($("<h1>", {
-        html: wrapt.item.host + ": " + wrapt.item.kern_name
-      }));
-      content.append($("<h3>", {
-        html: wrapt.item.nice_model
-      }));
-
-      // Show evey field that is not shown in the main grid
-      var propsToRemove = _.pluck(this.fields, "name");
-      var fields = _.omit(wrapt.item, propsToRemove);
-
-      var popup = new tingle.modal();
-      var table = $("<table>");
-      _.each(_.sortBy(_.keys(fields)), function(key) {
-        table.append("<tr>").append([
-          $("<td>" + key + "</td>"),
-          $("<td>" + fields[key] + "</td>")
-        ]);
-      });
-      content.append(table);
-      popup.setContent(content[0]);
-      popup.open();
+      new DrivePopup(wrapt.item, this.fields);
     }
   }); 
 });
+
+
+function DrivePopup(metadata, shownFields) {
+  // Build the heading and outer wrapper
+  var content = $("<div>");
+  content.append([
+      $("<h1>", {
+        html: metadata.host + ": " + metadata.kern_name
+      }),
+      $("<h2>", {
+        html: metadata.nice_model
+      }),
+      $("<h3>", {
+        html: "Select SMART:"
+      })
+  ]);
+
+  // Add SMART values we think are important
+  var smart = smarts[metadata.serial];
+  var smartTable = $("<table>");
+  _.each([5, 9, 197, 198], function(id) {
+    try {
+      smartTable.append("<tr>").append([
+          $("<td>", {
+            html: smart.vendor_smart[id].name.replace(/_/g, " ")
+          }),
+          $("<td>", {
+            html: smart.vendor_smart[id].raw
+          })
+      ]);
+    }
+    catch(TypeError) {
+      // Likely this disk does not support this smart attribute
+      return;
+    }
+  });
+  smartTable.append("<tr>").append([
+      $("<td>Error log count: </td>"),
+      $("<td>" + smart.errors.error_count + "</td>")
+  ]);
+  content.append(smartTable);
+
+  // Add evey metadata field that is not shown in the main grid
+  var propsToRemove = _.pluck(shownFields, "name");
+  var fields = _.omit(metadata, propsToRemove);
+  var metaTable = $("<table>");
+  _.each(_.sortBy(_.keys(fields)), function(key) {
+    metaTable.append("<tr>").append([
+      $("<td>" + key + "</td>"),
+      $("<td>" + fields[key] + "</td>")
+    ]);
+  });
+  content.append([
+      $("<h3>", {
+        html: "Other details:"
+      }),
+      metaTable
+  ]);
+
+  var popup = new tingle.modal();
+  popup.setContent(content[0]);
+  popup.open();
+};

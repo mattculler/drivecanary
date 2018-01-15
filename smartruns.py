@@ -209,14 +209,14 @@ def get_latest_run(serial):
   return SmartRun(text_file=latest_smart_run_file)
 
 
-# DELETEME - testing only
-#if __name__ == "__main__":
-#  import os
-#  import json
-#  for d in os.listdir("testdata"):
-#    print()
-#    print("*** OPERATING ON {0} ***".format(d))
-#    print()
-#    s = SmartRun(os.path.join("testdata", d))
-#
-#    print(json.dumps(s.to_json(), indent=2))
+# Testing only
+if __name__ == "__main__":
+  import os
+  import json
+  for d in os.listdir("testdata"):
+    print()
+    print("*** OPERATING ON {0} ***".format(d))
+    print()
+    s = SmartRun(os.path.join("testdata", d))
+
+    print(json.dumps(s.to_json(), indent=2))
