@@ -1,11 +1,27 @@
+preferredVendorSmart = [5, 9, 197, 198];
+
 $(document).ready(function() {
-  // Prefer the model_family, if it exists
   blkdevs.forEach(function(dev) {
+    // Prefer the model_family, if it exists
     var model = dev.model;
     if (dev.model_family) {
       model = dev.model_family;
     }
     dev.nice_model = model;
+
+    // Add in the best smart attributes
+    _.each(preferredVendorSmart, function(id) {
+      var smart = smarts[dev.serial];
+      try {
+        var name = smart.vendor_smart[id].name.replace(/_/g, " ");
+        var value = smart.vendor_smart[id].raw;
+      }
+      catch (TypeError) {
+        // Likely this disk does not support this smart attribute
+        return;
+      }
+      dev["smart_" + id] = value;
+    });
   });
 
   // Docs: http://js-grid.com/docs/
@@ -28,7 +44,11 @@ $(document).ready(function() {
       { name: "is_spinning_rust", type: "disktype", width: "50", title: "Disk Type" },
       { name: "nice_model", type: "text", width: "160", title: "Model" },
       { name: "serial", type: "text" },
-      { name: "first_seen", type: "date", title: "First Seen" }
+      { name: "smart_9", type: "text", title: "Power On Hours" },
+      { name: "smart_5", type: "text", title: "Reallocated Sectors" },
+      { name: "smart_197", type: "text", title: "Current Pending Sectors" },
+      { name: "smart_198", type: "text", title: "Offline Uncorrectable" }
+      //{ name: "first_seen", type: "date", title: "First Seen" }
     ],
 
     rowClick: function(wrapt) {
@@ -56,7 +76,7 @@ function DrivePopup(metadata, shownFields) {
   // Add SMART values we think are important
   var smart = smarts[metadata.serial];
   var smartTable = $("<table>");
-  _.each([5, 9, 197, 198], function(id) {
+  _.each(preferredVendorSmart, function(id) {
     try {
       smartTable.append("<tr>").append([
           $("<td>", {
@@ -67,7 +87,7 @@ function DrivePopup(metadata, shownFields) {
           })
       ]);
     }
-    catch(TypeError) {
+    catch (TypeError) {
       // Likely this disk does not support this smart attribute
       return;
     }
