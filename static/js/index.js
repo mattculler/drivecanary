@@ -44,7 +44,7 @@ $(document).ready(function() {
       { name: "is_spinning_rust", type: "disktype", width: "50", title: "Disk Type" },
       { name: "nice_model", type: "text", width: "160", title: "Model" },
       { name: "serial", type: "text" },
-      { name: "smart_9", type: "text", title: "Power On Hours" },
+      { name: "smart_9", type: "number", title: "Power On Hours" },
       { name: "smart_5", type: "text", title: "Reallocated Sectors" },
       { name: "smart_197", type: "text", title: "Current Pending Sectors" },
       { name: "smart_198", type: "text", title: "Offline Uncorrectable" }
@@ -59,6 +59,15 @@ $(document).ready(function() {
 
 
 function DrivePopup(metadata, shownFields) {
+  var getAllSmart = function() {
+    $.ajax("/getsmarts/" + metadata.serial, {
+      dataType: "json",
+      success: function(smartList) {
+        console.log("got " + smartList.length + " smart logs");
+      }
+    });
+  };
+
   // Build the heading and outer wrapper
   var content = $("<div>");
   content.append([

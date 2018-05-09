@@ -2,6 +2,7 @@
 # Queries the linked servers and updates the DB with new SMART info.
 
 from db import PyvDb
+from driveindex import DriveIndex
 
 
 if __name__ == "__main__":

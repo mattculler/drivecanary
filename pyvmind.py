@@ -11,11 +11,6 @@ app = Flask(__name__)
 pyvdb = PyvDb()
 driveindex = DriveIndex(["storage1", "storage2", "pve"], skip_update=True)
 
-@app.route("/getblkdevs")
-def get_blkdevs():
-  blkdevs = pyvdb.get_blockdevs()
-  return json.dumps(blkdevs)
-
 
 def json_serial(obj):
 	"""JSON serializer for objects not serializable by default json code"""
@@ -24,6 +19,15 @@ def json_serial(obj):
 		return obj.isoformat()
 	raise TypeError ("Type %s not serializable" % type(obj))
 
+
+@app.route("/getblkdevs")
+def get_blkdevs():
+  blkdevs = pyvdb.get_blockdevs()
+  return json.dumps(blkdevs)
+
+@app.route("/getsmarts/<serial>")
+def get_smarts(serial):
+  return json.dumps(driveindex.get_all_smarts_for_drive_json(serial))
 
 @app.route("/")
 def index():

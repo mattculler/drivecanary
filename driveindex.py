@@ -198,3 +198,10 @@ class DriveIndex(object):
       all_reports[dev.serial] = smartrun.to_json()
     return all_reports
 
+  def get_all_smarts_for_drive_json(self, serial):
+    all_reports = []
+    for smartrun in smartruns.get_all_runs_for_drive(serial):
+      all_reports.append(smartrun.to_json())
+    return all_reports
+
+
