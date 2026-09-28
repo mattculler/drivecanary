@@ -28,7 +28,7 @@
   {% endif %}
 </dl>
 
-<h2>Trends <span class="windows muted">{% for w in ('7d', '30d', '90d', '1y', 'all') %}<a class="plain {{ 'on' if w == window }}" href="?window={{ w }}">{{ w }}</a>{% endfor %}</span></h2>
+<h2>Trends <span class="windows muted">{% for w in ('7d', '30d', '90d', '1y', 'all') %}{% if w == window %}<b>{{ w }}</b>{% else %}<a href="?window={{ w }}">{{ w }}</a>{% endif %}{% endfor %}</span></h2>
 <div class="charts">
   {% for m in metrics %}<div class="chart" data-drive="{{ drive.id }}" data-metric="{{ m.metric }}" data-label="{{ m.label }}" data-unit="{{ m.unit }}" data-window="{{ window }}"></div>{% endfor %}
 </div>

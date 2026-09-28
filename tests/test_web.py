@@ -74,6 +74,9 @@ def test_drive_page_and_series(cfg: Config, factory: sessionmaker[Session], prob
     assert (
         r.status_code == 200 and "ST20000NM007D" in r.text and 'data-metric="attr:5"' in r.text and "Trends" in r.text
     )
+    assert "<b>30d</b>" in r.text and 'href="?window=30d"' not in r.text and 'href="?window=7d"' in r.text
+    picked = client.get(f"/drive/{ids[0]}?window=1y").text
+    assert "<b>1y</b>" in picked and 'href="?window=1y"' not in picked and 'href="?window=30d"' in picked
     r = client.get(f"/api/drives/{ids[0]}/series?metric=attr:194&window=all")
     assert r.status_code == 200
     pts = r.json()["points"]
