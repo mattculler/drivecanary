@@ -222,6 +222,12 @@ class Config(Section):
     def backups_dir(self) -> Path:
         return self.resolve_path(self.paths.backups_dir)
 
+    @property
+    def hub_key_copy(self) -> Path:
+        """A copy of the collector's PUBLIC key where the page may read it: the hosts page prints it in the
+        instructions for adding a host. The ssh dir itself stays closed to the page."""
+        return self.paths.state_dir / "hub-key.pub"
+
 
 # --------------------------------------------------------------------------- loading
 

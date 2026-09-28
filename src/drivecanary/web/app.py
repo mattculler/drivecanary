@@ -3,6 +3,7 @@ on each attempt; the collection runs. LAN only, no auth, read-only: the collecto
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterator
 from datetime import datetime
 from pathlib import Path
@@ -166,7 +167,12 @@ def create_app(config: Config | None = None) -> FastAPI:
     @app.get("/hosts", response_class=HTMLResponse)
     def hosts_page(request: Request, db: Db) -> HTMLResponse:
         ov = queries.overview(db, cfg)
-        return page(request, "hosts.html", ov=ov)
+        hub_key = cfg.hub_key_copy.read_text().strip() if cfg.hub_key_copy.is_file() else None
+        # the address this page was asked for is the hub's, when it was asked for by address
+        asked = request.url.hostname or ""
+        is_lan_ip = re.fullmatch(r"\d{1,3}(\.\d{1,3}){3}", asked) and not asked.startswith("127.")
+        hub_ip = asked if is_lan_ip else None
+        return page(request, "hosts.html", ov=ov, hub_key=hub_key, hub_ip=hub_ip)
 
     @app.get("/host/{host_id}", response_class=HTMLResponse)
     def host_page(request: Request, db: Db, host_id: int) -> HTMLResponse:

@@ -85,6 +85,10 @@ def write_ssh_material(cfg: Config, hosts: list[Host]) -> Path:
     (ssh_dir / "known_hosts").write_text(known)
     for p in (config_path, ssh_dir / "known_hosts"):
         os.chmod(p, 0o600)
+    pub = ssh_dir / "id_ed25519.pub"
+    if pub.is_file():  # the public half only, for the page's add-a-host instructions
+        cfg.hub_key_copy.write_text(pub.read_text())
+        os.chmod(cfg.hub_key_copy, 0o640)
     return config_path
 
 

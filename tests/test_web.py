@@ -4,7 +4,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
-from drivecanary.collect import SshResult, collect
+from drivecanary.collect import SshResult, collect, write_ssh_material
 from drivecanary.config import Config
 from drivecanary.models import Host, Pool
 from drivecanary.web.app import create_app, fmt_ago, fmt_bytes
@@ -31,6 +31,15 @@ def test_pages(cfg: Config, factory: sessionmaker[Session], probe_env: ProbeEnv)
     assert "Rate:" not in body
     r = client.get("/hosts")
     assert r.status_code == 200 and "atlas" in r.text
+    assert "<details" in r.text and "Adding a host" in r.text and "install-host.sh HOST --hub-ip" in r.text
+    assert "sudo cat" in r.text, "no hub key copy yet: the page says where to get it"
+    (cfg.ssh_dir / "id_ed25519.pub").write_text("ssh-ed25519 AAAAtestkey drivecanary-hub@test\n")
+    write_ssh_material(cfg, [])
+    r = TestClient(create_app(cfg), base_url="http://10.100.100.50:8080").get("/hosts")
+    assert "--hub-ip 10.100.100.50" in r.text and "ssh-ed25519 AAAAtestkey drivecanary-hub@test" in r.text
+    assert "sudo cat" not in r.text
+    r = TestClient(create_app(cfg), base_url="http://127.0.0.1:8080").get("/hosts")
+    assert "--hub-ip THIS-VM-IP" in r.text, "loopback is never the address a host should accept the key from"
     r = client.get("/host/1")
     assert r.status_code == 200 and "attrlog.ST20000NM007D_3DJ103-ZXA00001.ata.csv" in r.text
     r = client.get("/runs")

@@ -3,4 +3,25 @@
 {% block content %}
 <h1>Hosts</h1>
 {% include "_hosts_table.html" %}
+
+<details class="howto">
+<summary>Adding a host</summary>
+<p>Three steps. The first runs on your workstation, from a checkout of this repository, over your own ssh to the
+host (as root); the other two run on this VM.</p>
+<p><b>1. Workstation:</b> the <code>drivecanary</code> user, the probe and the gate, the sudoers line, and this hub's key
+bound to the gate. It ends by printing the host's key fingerprint.</p>
+<pre>deploy/host/install-host.sh HOST --hub-ip {{ hub_ip or 'THIS-VM-IP' }} \
+  --hub-key '{{ hub_key or 'ssh-ed25519 AAAA... drivecanary-hub' }}'</pre>
+{% if not hub_key %}<p class="muted">The hub's public key is not where the page can read it yet (it is copied on the next collection):
+<code>sudo cat {{ cfg.ssh_dir }}/id_ed25519.pub</code></p>{% endif %}
+<p class="muted">Add <code>--target root@HOST.domain</code> if your ssh config does not already say how to reach it.</p>
+<p><b>2. Here:</b> the host's row and its pinned key. Add <code>--tz ZONE</code> only for a host that is not in
+{{ cfg.collect.default_tz }} and does not say so itself.</p>
+<pre>drivecanary host add HOST --address HOST.domain --fingerprint SHA256:...</pre>
+<p><b>3. Here:</b> the first collection. The host goes from pending to ok and its smartd history is pulled from the start.</p>
+<pre>drivecanary collect --host HOST</pre>
+<p class="muted">Running step 1 again is how a probe upgrade or a repair is rolled out. A host that is away for months:
+<code>drivecanary host set HOST --state paused</code>; gone for good: <code>--state retired</code> (history is kept).
+What each failure class on a host's page means is in <code>deploy/README.md</code>.</p>
+</details>
 {% endblock %}
