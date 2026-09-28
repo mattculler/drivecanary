@@ -41,8 +41,8 @@ deploy/host/install-host.sh atlas --hub-ip 10.100.100.NN --hub-key 'ssh-ed25519 
 #    (--target root@atlas.domain if your ssh config does not already say so)
 #    It ends by printing the host's ed25519 fingerprint.
 
-# 2. hub: the row, the host's zone (its attrlog timestamps are local time), and the pinned host key
-drivecanary host add atlas --address atlas.domain --tz America/New_York --fingerprint SHA256:<from step 1>
+# 2. hub: the row and the pinned host key (--tz only if the host is not in [collect].default_tz)
+drivecanary host add atlas --address atlas.domain --fingerprint SHA256:<from step 1>
 
 # 3. hub: the first collection; the host goes from pending to ok, and its attrlogs are pulled from the start
 drivecanary collect --host atlas

@@ -31,6 +31,13 @@ def test_unknown_key_is_an_error(tmp_path: Path) -> None:
         load_config(p)
 
 
+def test_default_zone_must_exist(tmp_path: Path) -> None:
+    p = tmp_path / "config.toml"
+    p.write_text('[collect]\ndefault_tz = "Mars/Olympus"\n')
+    with pytest.raises(ConfigError, match="unknown time zone"):
+        load_config(p)
+
+
 def test_missing_file_names_the_env_var(tmp_path: Path) -> None:
     with pytest.raises(ConfigError, match="DRIVECANARY_CONFIG"):
         load_config(tmp_path / "nope.toml")

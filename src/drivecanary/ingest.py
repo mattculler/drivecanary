@@ -63,15 +63,16 @@ def _first_line(f: Frame | None) -> str | None:
     return f.text.splitlines()[0].strip() if f.text.strip() else None
 
 
-def _host_zone(host: Host, env: Envelope, warnings: list[str]) -> ZoneInfo | None:
-    name = host.tz or env.header.get("tz") or ""
-    if not name:
-        return None
-    try:
-        return zone(name)
-    except ValueError as e:
-        warnings.append(str(e))
-        return None
+def _host_zone(host: Host, env: Envelope, cfg: Config, warnings: list[str]) -> ZoneInfo:
+    """The zone a host's local timestamps are in: the row's, else what the host reports, else the default."""
+    for name in (host.tz, env.header.get("tz")):
+        if not name:
+            continue
+        try:
+            return zone(name)
+        except ValueError as e:
+            warnings.append(f"{e}; falling back")
+    return zone(cfg.collect.default_tz)
 
 
 def ingest_envelope(session: Session, *, host: Host, attempt: HostAttempt, env: Envelope, cfg: Config) -> IngestResult:
@@ -134,7 +135,7 @@ def ingest_envelope(session: Session, *, host: Host, attempt: HostAttempt, env: 
             s.current = False
 
     res.pools += _ingest_pools(session, host, attempt, env, when_default, res)
-    tz = _host_zone(host, env, res.warnings)
+    tz = _host_zone(host, env, cfg, res.warnings)
     for f in env.prefixed("attrlog:"):
         res.attrlog_lines += _ingest_attrlog_chunk(session, host, f, tz, cfg, res)
     return res
@@ -535,9 +536,7 @@ def _ingest_pools(
 # --------------------------------------------------------------------------- attrlog chunks
 
 
-def _ingest_attrlog_chunk(
-    session: Session, host: Host, f: Frame, tz: ZoneInfo | None, cfg: Config, res: IngestResult
-) -> int:
+def _ingest_attrlog_chunk(session: Session, host: Host, f: Frame, tz: ZoneInfo, cfg: Config, res: IngestResult) -> int:
     file_name = f.name.partition(":")[2]
     try:
         name = attrlog.parse_name(file_name)
@@ -546,11 +545,6 @@ def _ingest_attrlog_chunk(
         return 0
     if name.kind != "ata":
         return 0  # SCSI/NVMe attrlogs: another format, not read yet
-    if tz is None:
-        res.warnings.append(
-            f"{file_name}: no time zone for this host (set it with `drivecanary host set --tz`); chunk not imported"
-        )
-        return 0
     cursor = session.scalar(
         select(AttrlogCursor).where(AttrlogCursor.host_id == host.id, AttrlogCursor.file_name == file_name)
     )

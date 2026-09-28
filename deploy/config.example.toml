@@ -67,6 +67,11 @@ retry_every_hours = 6.0
 # (hours).
 stale_after_hours = 3.0
 
+# The zone a host's local timestamps (smartd's attrlog lines) are read in when
+# nothing says otherwise. A zone set on the host's row wins, then the zone the
+# host itself reports, then this (Olson name).
+default_tz = "America/New_York"
+
 [status]
 # The OK / WARN / FAIL verdict on a sample (drivecanary/status.py).
 

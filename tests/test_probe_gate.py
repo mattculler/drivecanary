@@ -112,6 +112,25 @@ def test_collect_envelope_ingests(probe_env: ProbeEnv, session: Session, cfg: Co
     assert session.scalar(select(func.count(SmartRun.id)).where(SmartRun.source == "attrlog")) == 20
 
 
+def test_a_host_without_a_zone_uses_what_it_reports_then_the_default(
+    probe_env: ProbeEnv, session: Session, cfg: Config
+) -> None:
+    from drivecanary.ingest import _host_zone
+
+    env = parse_envelope(probe_env.run_gate("drivecanary-collect").stdout)
+    host = Host(name="h", address="h")
+    warnings: list[str] = []
+    env.header["tz"] = "Europe/Berlin"
+    assert str(_host_zone(host, env, cfg, warnings)) == "Europe/Berlin"
+    host.tz = "Asia/Tokyo"
+    assert str(_host_zone(host, env, cfg, warnings)) == "Asia/Tokyo"
+    host.tz = None
+    env.header["tz"] = ""
+    assert str(_host_zone(host, env, cfg, warnings)) == "America/New_York"
+    env.header["tz"] = "Not/AZone"
+    assert str(_host_zone(host, env, cfg, warnings)) == "America/New_York" and warnings
+
+
 def test_devices_conf_skips_and_adds(probe_env: ProbeEnv) -> None:
     probe_env.devices_conf.write_text("# comment\n/dev/sdb skip\n/dev/sdz scsi\n")
     env = parse_envelope(probe_env.run_gate("drivecanary-collect").stdout)

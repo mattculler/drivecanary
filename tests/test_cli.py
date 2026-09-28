@@ -74,6 +74,28 @@ def test_a_pasted_ssh_keygen_line_is_a_fingerprint() -> None:
         _wanted_fingerprint("MD5:aa:bb:cc")
 
 
+def test_imports_default_to_the_configured_zone(tmp_path: Path) -> None:
+    from datetime import UTC, datetime
+
+    from sqlalchemy import select
+
+    from drivecanary.config import load_config
+    from drivecanary.db import make_engine, sessionmaker_for
+    from drivecanary.models import SmartRun
+
+    c = _config(tmp_path)
+    assert load_config(c).collect.default_tz == "America/New_York"
+    assert runner.invoke(app, ["-c", str(c), "db", "migrate"]).exit_code == 0
+    f = FIXTURES / "attrlog" / "atlas" / "attrlog.ST20000NM007D_3DJ103-ZXA00001.ata.csv"
+    r = runner.invoke(app, ["-c", str(c), "import", "attrlog", str(f)])  # no --host, no --tz
+    assert r.exit_code == 0 and "20 added" in r.output, r.output
+    engine = make_engine(load_config(c).db_path)
+    with sessionmaker_for(engine)() as s:
+        first = s.scalar(select(SmartRun.collected_at).order_by(SmartRun.collected_at).limit(1))
+    engine.dispose()
+    assert first == datetime(2023, 12, 18, 2, 45, 35, tzinfo=UTC)  # 21:45:35 EST
+
+
 def test_config_example_matches_the_file() -> None:
     r = runner.invoke(app, ["config", "example"])
     assert r.exit_code == 0 and r.output == render_toml(example_config())

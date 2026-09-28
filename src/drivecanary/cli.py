@@ -272,7 +272,8 @@ def host_add(
     ] = None,
     port: Annotated[int, typer.Option("--port")] = 22,
     tz: Annotated[
-        str | None, typer.Option("--tz", help="The host's zone, e.g. America/New_York, for its attrlog timestamps.")
+        str | None,
+        typer.Option("--tz", help="The host's zone, if it is not what the host reports or [collect].default_tz."),
     ] = None,
     transport: Annotated[str, typer.Option("--transport", help="pull (v1) or push.")] = "pull",
     keyscan: Annotated[
@@ -477,7 +478,8 @@ def import_attrlog(
     files: Annotated[list[Path], typer.Argument(help="attrlog.MODEL-SERIAL.ata.csv files (the name is the drive).")],
     host: Annotated[str | None, typer.Option("--host", help="The host the files came from (its zone is used).")] = None,
     tz: Annotated[
-        str | None, typer.Option("--tz", help="Zone of the timestamps, if the host has none or is not given.")
+        str | None,
+        typer.Option("--tz", help="Zone of the timestamps (default: the host's, else [collect].default_tz)."),
     ] = None,
 ) -> None:
     """Import smartd attribute logs copied from a host. Idempotent: lines already stored are skipped."""
@@ -488,11 +490,7 @@ def import_attrlog(
     cfg = state.config
     with _factory(state)() as s:
         host_row = _host(s, host) if host is not None else None
-        zone_name = tz or (host_row.tz if host_row is not None else None)
-        if not zone_name:
-            err.print("[red]a time zone is needed: --tz America/New_York, or a host with one set[/red]")
-            raise typer.Exit(2)
-        z = zone(zone_name)
+        z = zone(tz or (host_row.tz if host_row is not None else None) or cfg.collect.default_tz)
         for f in files:
             try:
                 drive, res = import_file(s, str(f), tz=z, cfg=cfg.status, host_id=host_row.id if host_row else None)

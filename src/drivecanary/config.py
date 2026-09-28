@@ -15,7 +15,7 @@ import tomllib
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 from pydantic_core import PydanticUndefined
 
 DEFAULT_CONFIG_PATH = Path("/etc/drivecanary/config.toml")
@@ -125,6 +125,21 @@ class CollectConfig(Section):
         ge=0.1,
         description="A host or drive with no successful sample for this long is shown STALE (hours).",
     )
+    default_tz: str = Field(
+        default="America/New_York",
+        description=(
+            "The zone a host's local timestamps (smartd's attrlog lines) are read in when nothing says otherwise. "
+            "A zone set on the host's row wins, then the zone the host itself reports, then this (Olson name)."
+        ),
+    )
+
+    @field_validator("default_tz")
+    @classmethod
+    def _known_zone(cls, v: str) -> str:
+        from drivecanary.timeutil import zone
+
+        zone(v)
+        return v
 
 
 # --------------------------------------------------------------------------- verdicts
