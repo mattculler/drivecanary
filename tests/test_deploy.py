@@ -105,6 +105,7 @@ def test_the_cli_wrapper_and_update_are_installed_the_safe_way() -> None:
     pull = update.index('git -C "$APP" pull')
     reexec = update.index('DRIVECANARY_UPDATE_STAGE2=1 exec "$APP/deploy/update.sh"')
     assert pull < reexec < update.index("sync --frozen")
+    assert 'echo "update: pulled $was -> $now"' in update, "one command, and it says what it brought"
     assert (
         update.index("systemctl stop 'drivecanary-*.timer'")
         < update.index("db migrate")

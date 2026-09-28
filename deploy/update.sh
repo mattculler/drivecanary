@@ -11,7 +11,15 @@ ETC=/etc/drivecanary
 case "${1:-}" in help|--help|-h) echo "usage: sudo $0  -- pull, stop the jobs, sync the venv, install units and CLI, migrate, restart the web UI, start the timers"; exit 0 ;; esac
 [ "$(id -u)" -eq 0 ] || { echo "run as root (sudo deploy/update.sh)"; exit 1; }
 if [ -z "${DRIVECANARY_UPDATE_STAGE2:-}" ]; then
+  was=$(sudo -u drivecanary -H git -C "$APP" rev-parse --short HEAD)
   sudo -u drivecanary -H git -C "$APP" pull --ff-only
+  now=$(sudo -u drivecanary -H git -C "$APP" rev-parse --short HEAD)
+  if [ "$was" = "$now" ]; then
+    echo "update: nothing new to pull (at $was); reinstalling what is here"
+  else
+    echo "update: pulled $was -> $now"
+    sudo -u drivecanary -H git -C "$APP" log --oneline "$was..$now" | sed 's/^/  /'
+  fi
   DRIVECANARY_UPDATE_STAGE2=1 exec "$APP/deploy/update.sh" "$@"
 fi
 UV=/usr/local/bin/uv  # install.sh put it there; a per-user uv is not on sudo's PATH
