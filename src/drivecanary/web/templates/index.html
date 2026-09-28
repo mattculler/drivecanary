@@ -60,7 +60,7 @@
   <td class="num">{{ s.read_errors if s and s.read_errors is not none else '' }}</td>
   <td class="num">{{ s.write_errors if s and s.write_errors is not none else '' }}</td>
   <td class="num">{{ s.cksum_errors if s and s.cksum_errors is not none else '' }}</td>
-  <td class="why">{{ (s.scrub or '')[:90] if s else '' }}</td>
+  <td class="why">{{ s.scrub|scrub(p.pool.kind) if s else '' }}</td>
   <td class="muted">{{ s.collected_at|ago(now) if s else 'never' }}</td>
   <td class="why">{{ (s.reasons or '').replace('\n', '; ') if s else '' }}</td>
 </tr>

@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
 from drivecanary.collect import SshResult, collect
 from drivecanary.config import Config
-from drivecanary.models import Host
+from drivecanary.models import Host, Pool
 from drivecanary.web.app import create_app, fmt_ago, fmt_bytes
 from tests.conftest import ProbeEnv
 
@@ -26,14 +27,21 @@ def test_pages(cfg: Config, factory: sessionmaker[Session], probe_env: ProbeEnv)
     body = r.text
     assert "Hitachi HDS721050DLE630" in body and "fail" in body and "atlas" in body and "tank" in body
     assert body.index("Hitachi") < body.index("WDC WD140EDFZ"), "worst first"
+    assert "finished 2026-09-14 08:12, took 5:12:33; no errors found" in body, "the scrub cell says what matters"
+    assert "Rate:" not in body
     r = client.get("/hosts")
     assert r.status_code == 200 and "atlas" in r.text
     r = client.get("/host/1")
     assert r.status_code == 200 and "attrlog.ST20000NM007D_3DJ103-ZXA00001.ata.csv" in r.text
     r = client.get("/runs")
     assert r.status_code == 200 and "manual" in r.text
-    r = client.get("/pool/1")
+    with factory() as s:
+        btr = s.scalar(select(Pool).where(Pool.kind == "btrfs"))
+        assert btr is not None
+    r = client.get(f"/pool/{btr.id}")
     assert r.status_code == 200
+    as_printed = "<pre>UUID:             1234-uuid\nScrub started:    Sun Sep 14 03:00:00 2026\n"
+    assert as_printed in r.text, "the scrub output keeps its lines"
     r = client.get("/healthz")
     assert r.status_code == 200 and r.json()["ok"] and r.json()["last_collection_age_hours"] is not None
     assert client.get("/favicon.svg").status_code == 200

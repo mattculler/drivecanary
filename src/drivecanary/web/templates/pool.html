@@ -4,7 +4,11 @@
 <h1><span class="kind">{{ pool.kind }}</span>{{ pool.name }} <span class="muted">on <a class="plain" href="/host/{{ host.id }}">{{ host.name }}</a></span></h1>
 {% if latest %}
 <section class="summary"><span class="badge big v-{{ latest.verdict }}">{{ latest.verdict }}</span><span>{{ latest.health or '' }}</span><span class="why">{{ (latest.reasons or '').replace('\n', '; ') }}</span><span class="muted">read {{ latest.collected_at|ago(now) }}</span></section>
-{% if latest.scrub %}<p><b>scrub:</b> {{ latest.scrub }}</p>{% endif %}
+{% if latest.scrub %}
+<h2>Scrub <span class="muted">{{ latest.scrub|scrub(pool.kind) }}</span></h2>
+<pre>{{ latest.scrub }}</pre>
+{% endif %}
+<h2>{{ {"zfs": "zpool status", "btrfs": "btrfs device stats", "md": "/proc/mdstat"}.get(pool.kind, "Status") }}</h2>
 <pre>{{ latest.raw or '' }}</pre>
 {% else %}<p class="muted">no status yet</p>{% endif %}
 {% endblock %}

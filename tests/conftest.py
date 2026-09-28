@@ -134,6 +134,16 @@ BTRFS_STATS = """[/dev/sde].write_io_errs    3
 """
 
 
+BTRFS_SCRUB = """UUID:             1234-uuid
+Scrub started:    Sun Sep 14 03:00:00 2026
+Status:           finished
+Duration:         5:12:33
+Total to scrub:   10.24TiB
+Rate:             558.12MiB/s
+Error summary:    no errors found
+"""
+
+
 def _shim(path: Path, body: str) -> None:
     path.write_text("#!/bin/sh\n" + body)
     path.chmod(path.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
@@ -211,12 +221,12 @@ exit 1
     (tmp_path / "zpool.status").write_text(ZPOOL_STATUS)
     _shim(shims / "findmnt", 'echo "/mnt/btr 1234-uuid"\n')
     (tmp_path / "btrfs.stats").write_text(BTRFS_STATS)
+    (tmp_path / "btrfs.scrub").write_text(BTRFS_SCRUB)
     _shim(
         shims / "btrfs",
         f"""case "$1 $2" in
   "device stats") cat "{tmp_path}/btrfs.stats"; exit 0 ;;
-  "scrub status") echo "UUID: 1234-uuid"; echo "Scrub started: Sun Sep 14 03:00:00 2026"
-                  echo "Status: finished"; exit 0 ;;
+  "scrub status") cat "{tmp_path}/btrfs.scrub"; exit 0 ;;
 esac
 exit 1
 """,

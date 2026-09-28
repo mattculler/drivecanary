@@ -19,6 +19,7 @@ from drivecanary import __version__, queries
 from drivecanary.config import Config, load_config
 from drivecanary.db import make_engine, sessionmaker_for
 from drivecanary.models import AttrlogCursor, CollectionRun, Drive, Host, HostAttempt, Pool, Verdict
+from drivecanary.scrub import summarize as summarize_scrub
 from drivecanary.smart import ATTR_LABELS
 from drivecanary.timeutil import hours_ago, utcnow
 
@@ -113,6 +114,7 @@ def create_app(config: Config | None = None) -> FastAPI:
     templates.env.filters["ago"] = fmt_ago
     templates.env.filters["dt"] = fmt_dt
     templates.env.filters["hours"] = fmt_hours
+    templates.env.filters["scrub"] = lambda text, kind: summarize_scrub(kind, text)
     templates.env.globals["version"] = __version__
     templates.env.globals["attr_label"] = lambda i: ATTR_LABELS.get(i, f"Attribute {i}")
 

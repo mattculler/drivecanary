@@ -34,6 +34,7 @@ from drivecanary.models import (
     SmartRun,
     Verdict,
 )
+from drivecanary.scrub import btrfs_found_errors
 from drivecanary.smart import SmartReport, parse_report
 from drivecanary.status import judge_report
 from drivecanary.timeutil import from_epoch, utcnow, zone
@@ -446,6 +447,12 @@ def _ingest_btrfs(
             if verdict == Verdict.OK:
                 verdict = Verdict.WARN
             reasons.append(f"{io} I/O errors")
+        scrub_text = scrub.text.strip() if scrub is not None and scrub.rc == 0 else None
+        scrub_errors = btrfs_found_errors(scrub_text)
+        if scrub_errors:
+            if verdict in (Verdict.OK, Verdict.UNKNOWN):
+                verdict = Verdict.WARN
+            reasons.append(f"last scrub: {scrub_errors}")
         pool = _pool(session, host, PoolKind.BTRFS, target, res)
         _pool_status(
             session,
@@ -459,7 +466,7 @@ def _ingest_btrfs(
             read_errors=totals.get("read_io_errs"),
             write_errors=totals.get("write_io_errs"),
             cksum_errors=totals.get("corruption_errs"),
-            scrub=(scrub.text.strip() if scrub is not None and scrub.rc == 0 else None) or None,
+            scrub=scrub_text or None,
         )
         n += 1
     return n
