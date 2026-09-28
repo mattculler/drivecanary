@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -232,6 +233,21 @@ def _fingerprint(known_hosts_line: str) -> str:
     raise RuntimeError(cp.stderr.strip() or "could not fingerprint the key")
 
 
+_FINGERPRINT = re.compile(r"SHA256:[A-Za-z0-9+/]{43}=?")
+
+
+def _wanted_fingerprint(given: str | None) -> str | None:
+    """The SHA256:... token out of whatever was pasted: `ssh-keygen -lf` prints the key size before it and
+    the key's comment after it, and a whole pasted line must not read as a mismatch."""
+    if given is None:
+        return None
+    m = _FINGERPRINT.search(given)
+    if m is None:
+        err.print(f"[red]--fingerprint: no SHA256:... fingerprint in {given!r}[/red]")
+        raise typer.Exit(2)
+    return m.group(0).rstrip("=")
+
+
 def _write_ssh_material(state: State, s: Session) -> None:
     from drivecanary.collect import write_ssh_material
 
@@ -273,6 +289,7 @@ def host_add(
     from drivecanary.timeutil import zone
 
     state = _state(ctx)
+    wanted = _wanted_fingerprint(fingerprint)
     if tz:
         zone(tz)
     if transport not in {t.value for t in Transport}:
@@ -295,8 +312,8 @@ def host_add(
                     f"(add with --no-keyscan and run `drivecanary host keyscan {name}` later)"
                 )
                 raise typer.Exit(1) from None
-            if fingerprint and fp != fingerprint:
-                err.print(f"[red]host key fingerprint {fp} does not match {fingerprint}: NOT pinned[/red]")
+            if wanted and fp != wanted:
+                err.print(f"[red]host key fingerprint {fp} does not match {wanted}: NOT pinned[/red]")
                 raise typer.Exit(1)
             host.hostkey = line
             typer.echo(f"pinned {host.address} {fp}")
@@ -316,12 +333,13 @@ def host_keyscan(
 ) -> None:
     """(Re)pin a host's ed25519 key; use after a host is reinstalled."""
     state = _state(ctx)
+    wanted = _wanted_fingerprint(fingerprint)
     with _factory(state)() as s:
         host = _host(s, name)
         line = _keyscan(host.address, host.ssh_port)
         fp = _fingerprint(line)
-        if fingerprint and fp != fingerprint:
-            err.print(f"[red]fingerprint {fp} does not match {fingerprint}: NOT pinned[/red]")
+        if wanted and fp != wanted:
+            err.print(f"[red]fingerprint {fp} does not match {wanted}: NOT pinned[/red]")
             raise typer.Exit(1)
         host.hostkey = line
         s.commit()

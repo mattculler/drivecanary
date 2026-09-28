@@ -58,6 +58,22 @@ def test_end_to_end_without_a_network(tmp_path: Path) -> None:
     assert r.exit_code == 0 and (tmp_path / "snap.db").exists() and not (tmp_path / "snap.db-wal").exists()
 
 
+def test_a_pasted_ssh_keygen_line_is_a_fingerprint() -> None:
+    """`ssh-keygen -lf` prints the size before the fingerprint and the key comment after it; pasting any of
+    that must compare equal to the bare token (2026-09-28: '... does not match ... root@atlas')."""
+    import pytest
+    import typer
+
+    from drivecanary.cli import _wanted_fingerprint
+
+    fp = "SHA256:5F9gtX2U0fwtSIFZ37XXZY/rJ1kvgeMQ23r2Xf6u8lg"
+    for pasted in (fp, f"{fp} root@atlas", f"256 {fp} root@atlas (ED25519)", f"  {fp}\n", f"{fp}="):
+        assert _wanted_fingerprint(pasted) == fp, pasted
+    assert _wanted_fingerprint(None) is None
+    with pytest.raises(typer.Exit):
+        _wanted_fingerprint("MD5:aa:bb:cc")
+
+
 def test_config_example_matches_the_file() -> None:
     r = runner.invoke(app, ["config", "example"])
     assert r.exit_code == 0 and r.output == render_toml(example_config())

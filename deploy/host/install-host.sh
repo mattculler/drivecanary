@@ -71,8 +71,8 @@ echo "== self-test: probe through sudo (first frame)"
 su -s /bin/sh drivecanary -c 'sudo -n /usr/local/lib/drivecanary/probe' | head -1
 echo "== attrlogs: $(ls /var/lib/smartmontools/attrlog.*.csv 2>/dev/null | wc -l) file(s)"
 echo "== time zone: $(cat /etc/timezone 2>/dev/null || readlink -f /etc/localtime | sed 's|.*/zoneinfo/||')"
-echo "== host key (pin this on the hub: drivecanary host add ... --fingerprint SHA256:...):"
-ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
+echo "== host key fingerprint, for the hub to pin (drivecanary host add ... --fingerprint ...):"
+ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub | awk '{print $2}'
 REMOTE
 echo "installing on $HOST via ssh $TARGET"
 tar -C "$WORK" -cf - probe gate sudoers authorized_keys remote.sh | ssh "$TARGET" 'set -e; T=$(mktemp -d); tar -C "$T" -xf -; sh "$T/remote.sh"; rm -rf "$T"'
