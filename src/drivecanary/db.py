@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from drivecanary.config import Config
 
 _engine: Engine | None = None
+_engine_path: Path | None = None
 _factory: sessionmaker[Session] | None = None
 
 
@@ -35,10 +36,15 @@ def make_engine(path: Path | str, *, echo: bool = False) -> Engine:
 
 
 def init_engine(config: Config) -> Engine:
-    global _engine, _factory
-    if _engine is None:
+    """The process's engine for the database the config names. A different path gets a new engine: the
+    cached one must never answer for a database it was not opened on."""
+    global _engine, _engine_path, _factory
+    if _engine is None or _engine_path != config.db_path:
+        if _engine is not None:
+            _engine.dispose()
         config.db_path.parent.mkdir(parents=True, exist_ok=True)
         _engine = make_engine(config.db_path, echo=config.db.echo_sql)
+        _engine_path = config.db_path
         _factory = sessionmaker(bind=_engine, expire_on_commit=False)
     return _engine
 
