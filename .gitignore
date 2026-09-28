@@ -1,0 +1,17 @@
+.venv/
+__pycache__/
+*.pyc
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+dist/
+build/
+*.egg-info/
+# local dev state: database, ssh material, config (dev/config.toml)
+dev/
+*.db
+*.db-wal
+*.db-shm
+# local config with real paths never goes in git
+config.toml
+.last-update

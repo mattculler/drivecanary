@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# The drivecanary CLI against the installed instance, for any admin shell: re-executes as the service user (the
+# database and the collector's ssh key are its) and runs the venv's entry point with /etc/drivecanary/config.toml.
+# Installed by deploy/install.sh as /usr/local/bin/drivecanary. Passwordless: deploy/sudoers.example.
+set -euo pipefail
+APP=/opt/drivecanary
+ETC=/etc/drivecanary
+case "${1:-}" in
+  help|--help|-h)
+    echo "usage: drivecanary <command> ...  -- the installed instance's CLI, run as the drivecanary user with $ETC/config.toml"
+    [ -x "$APP/.venv/bin/drivecanary" ] && exec "$APP/.venv/bin/drivecanary" --help
+    exit 0 ;;
+esac
+case "${1:-}" in
+  # the admin's sudo, not the service user's; the root-owned copy of update.sh (see deploy/sudoers.example)
+  update) exec sudo /usr/local/sbin/drivecanary-update "${@:2}" ;;
+esac
+if [ "$(id -un)" != drivecanary ]; then
+  exec sudo -u drivecanary -H "$(readlink -f "${BASH_SOURCE[0]}")" "$@"
+fi
+export DRIVECANARY_CONFIG="${DRIVECANARY_CONFIG:-$ETC/config.toml}"
+exec "$APP/.venv/bin/drivecanary" "$@"

@@ -1,0 +1,30 @@
+[Unit]
+Description=drivecanary: the page (LAN only)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=drivecanary-web
+Group=drivecanary
+# new -wal/-shm files beside the database must stay group-writable: the collector and the page share them
+UMask=0007
+WorkingDirectory=/opt/drivecanary
+Environment=DRIVECANARY_CONFIG=/etc/drivecanary/config.toml
+# journald gets JSON lines: [logging].format = "auto" picks JSON when stderr is not a tty
+StandardOutput=journal
+StandardError=journal
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/drivecanary
+# the collector's key is not the page's business
+InaccessiblePaths=-/var/lib/drivecanary/ssh
+# bind and port come from [web] in config.toml
+ExecStart=/opt/drivecanary/.venv/bin/drivecanary web serve
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

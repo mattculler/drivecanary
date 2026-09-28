@@ -1,0 +1,109 @@
+# drivecanary configuration. This file is the only home for tunables; every
+# key is explained directly above it with its unit. Unknown keys make the app
+# refuse to start. Hosts are not here: `drivecanary host add` keeps them in
+# the database.
+
+[db]
+# The SQLite database: every host, drive, sample and pool status lives here.
+
+# The database file. A relative path resolves against [paths].state_dir. It is
+# opened in WAL mode: keep it on local disk, never on NFS (WAL's shared memory
+# does not work across NFS). Backups snapshot it with SQLite's backup API
+# (deploy/backup.sh); a plain copy of a live WAL database loses rows.
+path = "drivecanary.db"
+
+# Log every SQL statement (debugging only).
+echo_sql = false
+
+[paths]
+# Where mutable state lives. Relative paths resolve against state_dir.
+
+# Root for the database, the collector's ssh material and the backups.
+state_dir = "/var/lib/drivecanary"
+
+# The collector's ssh material: its private key (id_ed25519), the client
+# config it generates from the host table, and the known_hosts it pins. Owned
+# by the collector user, mode 0700; the web user cannot read it.
+ssh_dir = "ssh"
+
+# Where deploy/backup.sh keeps the nightly bundles (how many is set in the
+# script).
+backups_dir = "backups"
+
+[collect]
+# The pull: one ssh per host, the probe on the other end (docs/transport-
+# design-2026-09-28.md).
+
+# Hosts contacted at once. The ssh calls run in parallel; the database writes
+# do not (count).
+parallel = 4
+
+# The account on every monitored host whose forced command is the gate;
+# deploy/host/install-host.sh creates it. A host can override this in its row.
+ssh_user = "drivecanary"
+
+# OpenSSH ConnectTimeout: the TCP connect and banner exchange only, not the
+# remote command (seconds).
+connect_timeout_seconds = 10
+
+# The whole ssh call, remote probe included; a hung USB bridge or a drive that
+# will not answer ends here and the attempt is recorded as a timeout
+# (seconds).
+host_timeout_seconds = 180
+
+# An envelope larger than this is dropped and the attempt fails. A first
+# backfill of years of attrlog is a few MB per drive, so this is only a guard
+# against a runaway (megabytes).
+max_output_mb = 64
+
+# A host unreachable for longer than this is tried every retry_every_hours
+# instead of every run (hours).
+unreachable_backoff_hours = 24.0
+
+# How often a long-unreachable host is tried again (hours).
+retry_every_hours = 6.0
+
+# A host or drive with no successful sample for this long is shown STALE
+# (hours).
+stale_after_hours = 3.0
+
+[status]
+# The OK / WARN / FAIL verdict on a sample (drivecanary/status.py).
+
+# ATA attribute ids whose non-zero raw value is a WARN: Backblaze's five
+# (reallocated sectors, reported uncorrectable, command timeout, current
+# pending, offline uncorrectable). SMART PASSED alone says little; these do.
+ata_warn_attributes = [5, 187, 188, 197, 198]
+
+# A drive at or above this temperature is a WARN (degrees C).
+temp_warn_c = 55
+
+# NVMe percentage_used at or above this is a WARN; 100 is the vendor's rated
+# endurance (percent).
+nvme_percentage_used_warn = 90
+
+# Whether an ATA error log with any entry (smartctl exit bit 6) is a WARN. Off
+# by default: old drives carry historic entries forever, and the count is on
+# the drive page anyway.
+error_log_is_warn = false
+
+[web]
+# The LAN-only page. No auth.
+
+# Address uvicorn binds to.
+bind = "0.0.0.0"
+
+# TCP port.
+port = 8080
+
+# A trend series longer than this is bucket-averaged down to it before the
+# chart gets it (points).
+series_max_points = 4000
+
+[logging]
+
+# Log level: debug, info, warning, error.
+level = "info"
+
+# `auto` = console on a TTY, JSON otherwise (journald gets JSON).
+format = "auto"

@@ -1,0 +1,94 @@
+#!/bin/sh
+# drivecanary gate: the forced command behind the hub's key on a monitored host, in the drivecanary user's
+# authorized_keys as
+#   restrict,from="HUB-IP",command="/usr/local/lib/drivecanary/gate" ssh-ed25519 AAAA... drivecanary-hub
+# It runs unprivileged and accepts exactly two verbs in SSH_ORIGINAL_COMMAND:
+#   drivecanary-ping                        one line back: the gate version
+#   drivecanary-collect [FILE=OFFSET ...]   the envelope (drivecanary/envelope.py): a header, the probe's frames
+#                                           (root, through sudo: deploy/host/sudoers), then each smartd attrlog
+#                                           from the byte offset the hub last read to, then END
+# Anything else, a shell or sftp included, exits 64. Globbing is off and every token is checked before use;
+# an offset is only ever a number, a file name only ever attrlog.*.csv without a slash.
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+LC_ALL=C
+export PATH LC_ALL
+VERSION=1
+PROBE=/usr/local/lib/drivecanary/probe
+ATTRLOG_DIR=/var/lib/smartmontools
+set -f
+case "${1:-}" in help|--help|-h)
+  echo "usage: forced command; reads SSH_ORIGINAL_COMMAND (drivecanary-ping | drivecanary-collect [FILE=OFFSET ...]) and writes the envelope to stdout"
+  exit 0 ;;
+esac
+cmd=${SSH_ORIGINAL_COMMAND-}
+[ -n "$cmd" ] || { echo "drivecanary gate: no command; this key only runs drivecanary-collect" >&2; exit 64; }
+# shellcheck disable=SC2086
+set -- $cmd
+verb=$1
+shift
+case "$verb" in
+  drivecanary-ping) printf 'DRIVECANARY-PONG gate_version=%s\n' "$VERSION"; exit 0 ;;
+  drivecanary-collect) ;;
+  *) echo "drivecanary gate: refused: $verb" >&2; exit 64 ;;
+esac
+for tok; do
+  case "$tok" in *=*) ;; *) echo "drivecanary gate: refused token" >&2; exit 64 ;; esac
+  f=${tok%%=*}
+  o=${tok#*=}
+  case "$f" in attrlog.*.csv) ;; *) echo "drivecanary gate: refused file name" >&2; exit 64 ;; esac
+  case "$f" in *[!A-Za-z0-9_.-]*|*..*) echo "drivecanary gate: refused file name" >&2; exit 64 ;; esac
+  case "$o" in ''|*[!0-9]*) echo "drivecanary gate: refused offset" >&2; exit 64 ;; esac
+  [ ${#o} -le 12 ] || { echo "drivecanary gate: refused offset" >&2; exit 64; }
+done
+ARGS=$*
+offset_for() {
+  for tok in $ARGS; do
+    case "$tok" in "$1="*) printf '%s' "${tok#*=}"; return ;; esac
+  done
+  printf 0
+}
+TMP=$(mktemp -d "${TMPDIR:-/tmp}/drivecanary-gate.XXXXXX") || exit 70
+trap 'rm -rf "$TMP"' EXIT
+
+printf 'DRIVECANARY-ENVELOPE 1\n'
+printf 'gate_version=%s\n' "$VERSION"
+printf 'hostname=%s\n' "$(hostname 2>/dev/null)"
+printf 'machine_id=%s\n' "$(cat /etc/machine-id 2>/dev/null)"
+printf 'boot_id=%s\n' "$(cat /proc/sys/kernel/random/boot_id 2>/dev/null)"
+printf 'collected_at=%s\n' "$(date +%s)"
+tz=$(cat /etc/timezone 2>/dev/null)
+if [ -z "$tz" ]; then
+  l=$(readlink -f /etc/localtime 2>/dev/null)
+  case "$l" in */zoneinfo/*) tz=${l##*/zoneinfo/} ;; esac
+fi
+printf 'tz=%s\n' "$tz"
+printf 'utc_offset=%s\n' "$(date +%z)"
+printf 'payload_id=%s\n' "$(tr -d - < /proc/sys/kernel/random/uuid 2>/dev/null)"
+printf 'HEADER-END\n'
+
+# the probe's frames go straight through; its exit and sudo's complaint, if any, become a frame of their own
+sudo -n "$PROBE" 2>"$TMP/err"
+prc=$?
+printf 'FRAME name=probe.exit rc=%s out=0 err=%s\n' "$prc" "$(wc -c <"$TMP/err" | tr -d ' ')"
+cat "$TMP/err"
+printf '\n'
+N=1
+
+set +f
+for f in "$ATTRLOG_DIR"/attrlog.*.csv; do
+  set -f
+  [ -f "$f" ] || continue
+  name=${f##*/}
+  off=$(offset_for "$name")
+  inode=$(stat -c %i "$f")
+  size=$(stat -c %s "$f")
+  [ "$off" -le "$size" ] 2>/dev/null || off=0   # shorter than last time: rotated or rewritten, start over
+  len=$((size - off))
+  printf 'FRAME name=attrlog:%s rc=0 out=%s err=0 inode=%s size=%s offset=%s\n' "$name" "$len" "$inode" "$size" "$off"
+  [ "$len" -gt 0 ] && tail -c +$((off + 1)) "$f" | head -c "$len"
+  printf '\n'
+  N=$((N + 1))
+done
+set -f
+printf 'END frames=%s\n' "$N"
+exit 0

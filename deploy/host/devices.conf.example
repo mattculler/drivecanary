@@ -1,0 +1,6 @@
+# /etc/drivecanary/devices.conf on a monitored host: one line per device the probe should treat differently
+# from what `smartctl --scan-open` found. "DEVICE TYPE" adds a device or changes its -d type; "DEVICE skip"
+# leaves it alone. Types are smartctl's (-d): sat, sat,12, nvme, scsi, megaraid,N, usbjmicron, ...
+# /dev/sdc sat,12
+# /dev/sdd skip
+# /dev/bus/0 megaraid,4

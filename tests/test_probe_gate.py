@@ -1,0 +1,141 @@
+"""The real shell scripts, run against shims: the envelope they produce is what the hub ingests."""
+
+from __future__ import annotations
+
+from datetime import UTC, datetime
+from zoneinfo import ZoneInfo
+
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session
+
+from drivecanary.config import Config
+from drivecanary.envelope import parse_envelope
+from drivecanary.ingest import ingest_envelope
+from drivecanary.models import (
+    AttrlogCursor,
+    AttrSample,
+    Drive,
+    DriveSighting,
+    Host,
+    HostAttempt,
+    Pool,
+    PoolStatus,
+    SmartRun,
+)
+from tests.conftest import ProbeEnv
+
+
+def test_gate_ping_and_refusals(probe_env: ProbeEnv) -> None:
+    cp = probe_env.run_gate("drivecanary-ping")
+    assert cp.returncode == 0 and cp.stdout == b"DRIVECANARY-PONG gate_version=1\n"
+    for bad in (
+        "id",
+        "sh",
+        "drivecanary-collect x",
+        "drivecanary-collect ../etc/passwd=0",
+        "drivecanary-collect a.csv=1x",
+    ):
+        cp = probe_env.run_gate(bad)
+        assert cp.returncode == 64, bad
+        assert cp.stdout == b""
+
+
+def test_probe_answers_help_without_running(probe_env: ProbeEnv) -> None:
+    import subprocess
+
+    for word in ("help", "--help", "-h"):
+        cp = subprocess.run(["sh", str(probe_env.probe), word], capture_output=True, text=True, check=False)
+        assert cp.returncode == 0 and "usage" in cp.stdout
+
+
+def test_collect_envelope_ingests(probe_env: ProbeEnv, session: Session, cfg: Config) -> None:
+    cp = probe_env.run_gate("drivecanary-collect")
+    assert cp.returncode == 0, cp.stderr
+    env = parse_envelope(cp.stdout)
+    assert env.complete and env.probe_ran and env.header["gate_version"] == "1"
+    names = [f.name for f in env.frames]
+    assert "smartctl.scan" in names and "smartctl.dev:/dev/sda:sat" in names and "smartctl.dev:/dev/nvme0:nvme" in names
+    assert "smartctl.dev:/dev/sr0:scsi" not in names, "a device with open_error is left alone"
+    assert "zpool.list" in names and "btrfs.stats:1234-uuid" in names and "lsblk" in names
+    assert env.frame("probe.exit") is not None and env.frame("probe.exit").rc == 0
+    attr = env.prefixed("attrlog:")[0]
+    assert attr.attrs["offset"] == "0" and int(attr.attrs["size"]) == len(attr.out)
+
+    host = Host(name="atlas", address="atlas.domain", tz="America/New_York")
+    session.add(host)
+    session.flush()
+    attempt = HostAttempt(host_id=host.id)
+    session.add(attempt)
+    session.flush()
+    res = ingest_envelope(session, host=host, attempt=attempt, env=env, cfg=cfg)
+    session.commit()
+    assert res.drives == 3 and res.runs == 3 and res.pools == 3 and res.attrlog_lines == 20
+    assert host.smartctl_version == "7.4" and host.gate_version == 1 and host.probe_version == 1 and host.machine_id
+
+    drives = {d.serial_key: d for d in session.scalars(select(Drive))}
+    assert len(drives) == 4  # sda, sdb, nvme0 from smartctl; the attrlog drive from its file name
+    runs = {r.drive_id: r for r in session.scalars(select(SmartRun).where(SmartRun.source == "smartctl"))}
+    by_dev = {s.dev_name: s for s in session.scalars(select(DriveSighting))}
+    assert set(by_dev) == {"/dev/sda", "/dev/sdb", "/dev/nvme0"} and all(s.current for s in by_dev.values())
+    assert runs[by_dev["/dev/sdb"].drive_id].verdict == "fail" and runs[by_dev["/dev/sda"].drive_id].verdict == "ok"
+    nvme = runs[by_dev["/dev/nvme0"].drive_id]
+    assert nvme.nvme_percentage_used is not None and nvme.raw_json is not None
+    assert session.scalar(select(func.count()).select_from(AttrSample).where(AttrSample.raw_str.is_not(None))) > 0
+
+    pools = {(p.kind, p.name): p for p in session.scalars(select(Pool))}
+    assert set(pools) == {("zfs", "tank"), ("zfs", "backup"), ("btrfs", "/mnt/btr")}
+    statuses = {s.pool_id: s for s in session.scalars(select(PoolStatus))}
+    assert statuses[pools[("zfs", "tank")].id].verdict == "ok"
+    bad = statuses[pools[("zfs", "backup")].id]
+    assert bad.verdict == "fail" and bad.health == "DEGRADED" and bad.cksum_errors == 7
+    btr = statuses[pools[("btrfs", "/mnt/btr")].id]
+    assert btr.verdict == "warn" and btr.write_errors == 3 and btr.scrub and "finished" in btr.scrub
+
+    cursor = session.scalar(select(AttrlogCursor))
+    assert cursor is not None and cursor.offset == int(attr.attrs["size"]) and cursor.lines == 20
+    last_line = (probe_env.attrlog_dir / cursor.file_name).read_text().splitlines()[-1]
+    expected = datetime.strptime(last_line.split(";", 1)[0], "%Y-%m-%d %H:%M:%S").replace(
+        tzinfo=ZoneInfo("America/New_York")
+    )
+    assert cursor.last_ts == expected.astimezone(UTC)
+
+    # second collection: the gate is told the offset and sends nothing new; nothing is duplicated
+    cp = probe_env.run_gate(f"drivecanary-collect {cursor.file_name}={cursor.offset}")
+    env2 = parse_envelope(cp.stdout)
+    attr2 = env2.prefixed("attrlog:")[0]
+    assert attr2.attrs["offset"] == str(cursor.offset) and attr2.out == b""
+    attempt2 = HostAttempt(host_id=host.id)
+    session.add(attempt2)
+    session.flush()
+    res2 = ingest_envelope(session, host=host, attempt=attempt2, env=env2, cfg=cfg)
+    assert res2.attrlog_lines == 0
+    assert session.scalar(select(func.count(SmartRun.id)).where(SmartRun.source == "attrlog")) == 20
+
+
+def test_devices_conf_skips_and_adds(probe_env: ProbeEnv) -> None:
+    probe_env.devices_conf.write_text("# comment\n/dev/sdb skip\n/dev/sdz scsi\n")
+    env = parse_envelope(probe_env.run_gate("drivecanary-collect").stdout)
+    names = [f.name for f in env.frames]
+    assert "smartctl.dev:/dev/sdb:sat" not in names and "smartctl.dev:/dev/sdz:scsi" in names
+
+
+def test_sudo_failure_is_reported_in_the_envelope(probe_env: ProbeEnv, session: Session, cfg: Config) -> None:
+    (probe_env.shims / "sudo").write_text("#!/bin/sh\necho 'sudo: a password is required' >&2\nexit 1\n")
+    env = parse_envelope(probe_env.run_gate("drivecanary-collect").stdout)
+    assert env.complete and not env.probe_ran
+    pe = env.frame("probe.exit")
+    assert pe is not None and pe.rc == 1 and b"password" in pe.err
+    from drivecanary.ingest import IngestError
+
+    host = Host(name="h", address="h")
+    session.add(host)
+    session.flush()
+    attempt = HostAttempt(host_id=host.id)
+    session.add(attempt)
+    session.flush()
+    try:
+        ingest_envelope(session, host=host, attempt=attempt, env=env, cfg=cfg)
+    except IngestError as e:
+        assert e.failure_class.value == "sudo"
+    else:
+        raise AssertionError("expected IngestError")

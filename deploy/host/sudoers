@@ -1,0 +1,7 @@
+# /etc/sudoers.d/drivecanary, installed by deploy/host/install-host.sh with mode 0440 (the file name has no
+# '.' and no trailing '~', or sudo silently skips it). The gate, as the drivecanary user, may run exactly one
+# root-owned, root-only-writable script, with no arguments. Never `smartctl` itself: that would also grant
+# `-s off`, `-t`, `-X` and `-B FILE` as root.
+drivecanary ALL=(root) NOPASSWD: /usr/local/lib/drivecanary/probe ""
+# no auth.log line for every hourly run
+Defaults!/usr/local/lib/drivecanary/probe !log_allowed

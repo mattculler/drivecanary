@@ -1,0 +1,25 @@
+[Unit]
+Description=drivecanary: nightly backup bundle (database snapshot, config), with an off-box copy when configured
+# remote-fs.target: a Persistent timer fires right after boot, and the NAS share of BACKUP_COPY_DIR should be
+# up by then. Where the copy goes is this machine's business: a drop-in (`systemctl edit
+# drivecanary-backup.service`), which an update never touches. See deploy/README.md.
+After=remote-fs.target
+
+[Service]
+Type=oneshot
+SuccessExitStatus=SIGTERM
+TimeoutStartSec=30min
+Nice=10
+CPUWeight=20
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+User=drivecanary
+Group=drivecanary
+UMask=0007
+Environment=DRIVECANARY_CONFIG=/etc/drivecanary/config.toml
+ExecStart=/opt/drivecanary/deploy/backup.sh
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/drivecanary

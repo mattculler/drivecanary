@@ -1,0 +1,29 @@
+[Unit]
+Description=drivecanary: collect drive health from every host
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# stopped on request (an update, a shutdown, `systemctl stop`) is not a failure; and a host that could not be
+# reached (exit 1) is that host's problem, recorded on its row, not the unit's
+SuccessExitStatus=1 SIGTERM
+# a oneshot has no start timeout by default, and a wedged run would swallow every later timer firing
+TimeoutStartSec=20min
+Nice=10
+CPUWeight=20
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+User=drivecanary
+Group=drivecanary
+UMask=0007
+WorkingDirectory=/opt/drivecanary
+Environment=DRIVECANARY_CONFIG=/etc/drivecanary/config.toml
+StandardOutput=journal
+StandardError=journal
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/drivecanary
+ExecStart=/opt/drivecanary/.venv/bin/drivecanary collect --trigger timer

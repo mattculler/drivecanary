@@ -1,0 +1,80 @@
+from __future__ import annotations
+
+from fastapi.testclient import TestClient
+from sqlalchemy.orm import Session, sessionmaker
+
+from drivecanary.collect import SshResult, collect
+from drivecanary.config import Config
+from drivecanary.models import Host
+from drivecanary.web.app import create_app, fmt_ago, fmt_bytes
+from tests.conftest import ProbeEnv
+
+
+def _populated(cfg: Config, factory: sessionmaker[Session], probe_env: ProbeEnv) -> None:
+    with factory() as s:
+        s.add(Host(name="atlas", address="atlas.domain", tz="America/New_York"))
+        s.commit()
+    envelope = probe_env.run_gate("drivecanary-collect").stdout
+    collect(cfg, factory, runner=lambda h, a: SshResult(0, envelope, b""))
+
+
+def test_pages(cfg: Config, factory: sessionmaker[Session], probe_env: ProbeEnv) -> None:
+    _populated(cfg, factory, probe_env)
+    client = TestClient(create_app(cfg))
+    r = client.get("/")
+    assert r.status_code == 200
+    body = r.text
+    assert "Hitachi HDS721050DLE630" in body and "fail" in body and "atlas" in body and "tank" in body
+    assert body.index("Hitachi") < body.index("WDC WD140EDFZ"), "worst first"
+    r = client.get("/hosts")
+    assert r.status_code == 200 and "atlas" in r.text
+    r = client.get("/host/1")
+    assert r.status_code == 200 and "attrlog.ST20000NM007D_3DJ103-ZXA00001.ata.csv" in r.text
+    r = client.get("/runs")
+    assert r.status_code == 200 and "manual" in r.text
+    r = client.get("/pool/1")
+    assert r.status_code == 200
+    r = client.get("/healthz")
+    assert r.status_code == 200 and r.json()["ok"] and r.json()["last_collection_age_hours"] is not None
+    assert client.get("/favicon.svg").status_code == 200
+    assert client.get("/static/uPlot.iife.min.js").status_code == 200
+    assert client.get("/drive/999").status_code == 404
+
+
+def test_drive_page_and_series(cfg: Config, factory: sessionmaker[Session], probe_env: ProbeEnv) -> None:
+    _populated(cfg, factory, probe_env)
+    client = TestClient(create_app(cfg))
+    with factory() as s:
+        from sqlalchemy import select
+
+        from drivecanary.models import Drive
+
+        attrlog_drive = s.scalar(select(Drive).where(Drive.serial_key == "ZXA00001"))
+        nvme = s.scalar(select(Drive).where(Drive.protocol == "NVMe"))
+        assert attrlog_drive is not None and nvme is not None
+        ids = (attrlog_drive.id, nvme.id)
+    r = client.get(f"/drive/{ids[0]}")
+    assert (
+        r.status_code == 200 and "ST20000NM007D" in r.text and 'data-metric="attr:5"' in r.text and "Trends" in r.text
+    )
+    r = client.get(f"/api/drives/{ids[0]}/series?metric=attr:194&window=all")
+    assert r.status_code == 200
+    pts = r.json()["points"]
+    assert len(pts) == 20 and pts[0][1] == 32.0 and pts[0][0] < pts[-1][0]
+    r = client.get(f"/api/drives/{ids[0]}/series?metric=temp&window=7d")
+    assert r.status_code == 200 and r.json()["points"] == []  # 2023 data is outside a 7-day window
+    r = client.get(f"/drive/{ids[1]}")
+    assert r.status_code == 200 and 'data-metric="nvme_percentage_used"' in r.text
+    assert client.get(f"/api/drives/{ids[1]}/series?metric=bogus").status_code == 400
+
+
+def test_formatters() -> None:
+    assert fmt_bytes(20000588955136) == "20.0 TB" and fmt_bytes(500107862016) == "500 GB" and fmt_bytes(None) == ""
+    from datetime import timedelta
+
+    from drivecanary.timeutil import utcnow
+
+    now = utcnow()
+    assert fmt_ago(now - timedelta(minutes=5), now) == "5 min ago"
+    assert fmt_ago(now - timedelta(hours=3), now) == "3.0 h ago"
+    assert fmt_ago(now - timedelta(days=4), now) == "4 d ago" and fmt_ago(None) == "never"

@@ -1,0 +1,11 @@
+[Unit]
+Description=drivecanary: nightly backup
+
+[Timer]
+OnCalendar=*-*-* 02:30:00
+RandomizedDelaySec=5min
+Unit=drivecanary-backup.service
+Persistent=true
+
+[Install]
+WantedBy=timers.target

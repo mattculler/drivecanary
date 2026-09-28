@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}{{ host.name }} · drivecanary{% endblock %}
+{% block content %}
+<h1>{{ host.name }} <span class="muted">{{ host.address }}{% if host.ssh_port != 22 %}:{{ host.ssh_port }}{% endif %}</span></h1>
+<dl class="kv">
+  <dt>state</dt><dd>{{ host.state }}{% if host.unreachable_since %} (unreachable since {{ host.unreachable_since|dt }}){% endif %}</dd>
+  <dt>transport</dt><dd>{{ host.transport }} as {{ host.ssh_user or cfg.collect.ssh_user }}</dd>
+  <dt>time zone</dt><dd>{{ host.tz or '(from the gate)' }}</dd>
+  <dt>os</dt><dd>{{ host.os_release or '' }}</dd>
+  <dt>smartctl</dt><dd>{{ host.smartctl_version or '' }} <span class="muted">gate v{{ host.gate_version or '?' }}, probe v{{ host.probe_version or '?' }}</span></dd>
+  <dt>machine-id</dt><dd class="muted">{{ host.machine_id or '' }}</dd>
+  <dt>last success</dt><dd>{{ host.last_success_at|ago(now) }} <span class="muted">{{ host.last_success_at|dt }}</span></dd>
+  {% if host.last_attempt_class %}<dt>last failure</dt><dd class="problem">{{ host.last_attempt_class }}: {{ host.last_attempt_reason }}</dd>
+  {% elif host.last_attempt_reason %}<dt>warnings</dt><dd>{{ host.last_attempt_reason.replace('\n', '; ') }}</dd>{% endif %}
+  {% if host.note %}<dt>note</dt><dd>{{ host.note }}</dd>{% endif %}
+</dl>
+
+<h2>Drives</h2>
+<div class="tbl"><table>
+<tr><th>status</th><th>dev</th><th>drive</th><th>serial</th><th class="num">size</th><th class="num">°C</th><th class="num">hours</th><th>read</th><th class="wrap">why</th></tr>
+{% for d in drives %}{% set r = d.latest %}
+<tr class="r-{{ d.verdict.value }}">
+  <td>{% with v=d.verdict %}{% include "_badge.html" %}{% endwith %}</td>
+  <td>{{ d.dev_name or '' }}</td>
+  <td><span class="kind">{{ d.drive.kind }}</span><a href="/drive/{{ d.drive.id }}">{{ d.drive.label }}</a></td>
+  <td class="muted">{{ d.drive.serial or d.drive.serial_key }}</td>
+  <td class="num">{{ d.drive.capacity_bytes|bytes }}</td>
+  <td class="num">{{ r.temp_c if r and r.temp_c is not none else '' }}</td>
+  <td class="num">{{ '{:,}'.format(r.power_on_hours) if r and r.power_on_hours is not none else '' }}</td>
+  <td class="muted">{{ r.collected_at|ago(now) if r else 'never' }}</td>
+  <td class="why">{{ d.reasons|join('; ') }}</td>
+</tr>
+{% else %}<tr><td colspan="9" class="muted">no drives seen on this host yet</td></tr>{% endfor %}
+</table></div>
+
+{% if pools %}
+<h2>Pools</h2>
+<div class="tbl"><table>
+<tr><th>status</th><th>kind</th><th>pool</th><th>health</th><th class="wrap">why</th></tr>
+{% for p in pools %}{% set s = p.latest %}
+<tr><td>{% with v=p.verdict %}{% include "_badge.html" %}{% endwith %}</td><td><span class="kind">{{ p.pool.kind }}</span></td><td><a href="/pool/{{ p.pool.id }}">{{ p.pool.name }}</a></td><td>{{ s.health if s else '' }}</td><td class="why">{{ (s.reasons or '').replace('\n', '; ') if s else '' }}</td></tr>
+{% endfor %}
+</table></div>
+{% endif %}
+
+<h2>Attempts</h2>
+<div class="tbl"><table>
+<tr><th>started</th><th>result</th><th class="num">drives</th><th class="num">bytes</th><th class="num">ssh rc</th><th>host clock</th><th class="wrap">reason</th></tr>
+{% for a in attempts %}
+<tr class="r-{{ 'ok' if a.ok else 'fail' }}">
+  <td title="{{ a.started_at|dt }}">{{ a.started_at|ago(now) }}</td>
+  <td>{% if a.ok %}<span class="badge v-ok">ok</span>{% elif a.finished_at %}<span class="badge v-error">{{ a.failure_class or 'failed' }}</span>{% else %}<span class="badge v-unknown">running</span>{% endif %}</td>
+  <td class="num">{{ a.drives_seen }}</td><td class="num">{{ '{:,}'.format(a.bytes_received) }}</td><td class="num">{{ a.ssh_rc if a.ssh_rc is not none else '' }}</td>
+  <td class="muted">{{ a.host_collected_at|dt }}</td>
+  <td class="why">{{ a.reason or '' }}</td>
+</tr>
+{% else %}<tr><td colspan="7" class="muted">never tried</td></tr>{% endfor %}
+</table></div>
+
+{% if cursors %}
+<h2>smartd attribute logs</h2>
+<div class="tbl"><table>
+<tr><th>file</th><th class="num">bytes read</th><th class="num">lines</th><th>last line</th></tr>
+{% for c in cursors %}<tr><td>{{ c.file_name }}</td><td class="num">{{ '{:,}'.format(c.offset) }}</td><td class="num">{{ '{:,}'.format(c.lines) }}</td><td class="muted">{{ c.last_ts|dt }}</td></tr>{% endfor %}
+</table></div>
+{% endif %}
+{% endblock %}

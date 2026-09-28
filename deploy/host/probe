@@ -1,0 +1,97 @@
+#!/bin/sh
+# drivecanary probe: runs as root on a monitored host, started by the gate through sudo (deploy/host/sudoers)
+# or, later, by a push agent's timer. Takes no arguments and reads no environment (sudo's env_reset sees to
+# that), so nothing a caller sends can reach root. Writes frames to stdout:
+#
+#   FRAME name=<name> rc=<rc> out=<bytes> err=<bytes>
+#   <that many bytes of stdout><that many bytes of stderr>
+#
+# and a PROBE-END line last; the hub (drivecanary/envelope.py) does all the parsing. Every command runs under
+# `timeout`, and a second probe while one is still running exits 75 at once.
+#
+# What it runs: smartctl --scan-open, then `smartctl -j -x` per device (with -n standby so a sleeping disk stays
+# asleep; a device from /etc/drivecanary/devices.conf can override the -d type or be skipped), then whatever
+# of zpool, btrfs and md is present, lsblk, and os-release.
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+LC_ALL=C
+export PATH LC_ALL
+VERSION=1
+STANDBY_EXIT=3
+DEVICES_CONF=/etc/drivecanary/devices.conf
+umask 077
+case "${1:-}" in help|--help|-h)
+  echo "usage: $0  -- no arguments; writes drivecanary probe frames (smartctl, zpool, btrfs, md, lsblk, os-release) to stdout; PROBE-END last"
+  exit 0 ;;
+esac
+[ $# -eq 0 ] || { echo "probe: takes no arguments" >&2; exit 64; }
+TMP=$(mktemp -d "${TMPDIR:-/tmp}/drivecanary-probe.XXXXXX") || exit 70
+trap 'rm -rf "$TMP"' EXIT
+LOCKDIR=/run/lock
+[ -w "$LOCKDIR" ] || LOCKDIR=$TMP
+exec 9>"$LOCKDIR/drivecanary-probe.lock" || exit 70
+if ! flock -n 9; then echo "probe: another probe is still running" >&2; exit 75; fi
+N=0
+
+# frame NAME SECONDS COMMAND...: run it, then write its frame
+frame() {
+  _name=$1; _t=$2; shift 2
+  timeout -k 5 "$_t" "$@" </dev/null >"$TMP/out" 2>"$TMP/err"; _rc=$?
+  printf 'FRAME name=%s rc=%s out=%s err=%s\n' "$_name" "$_rc" "$(wc -c <"$TMP/out" | tr -d ' ')" "$(wc -c <"$TMP/err" | tr -d ' ')"
+  cat "$TMP/out" "$TMP/err"
+  printf '\n'
+  N=$((N + 1))
+  return $_rc
+}
+
+frame smartctl.version 10 smartctl --version
+frame smartctl.scan 60 smartctl --scan-open -j
+# one "name type" per opened device (an entry with open_error is left out); smartctl prints one key per line
+awk -F'"' '
+  /^ *\{/ { n = ""; t = ""; e = 0 }
+  /"name":/ { n = $4 }
+  /"type":/ { t = $4 }
+  /"open_error":/ { e = 1 }
+  /^ *\}/ { if (n != "" && t != "" && !e) print n, t }
+' "$TMP/out" > "$TMP/devices"
+# overrides: "DEVICE TYPE" adds or re-types a device, "DEVICE skip" leaves it alone (HBAs, odd USB bridges)
+if [ -f "$DEVICES_CONF" ]; then
+  while read -r d t _; do
+    case "$d" in ''|'#'*) continue ;; esac
+    awk -v d="$d" '$1 != d' "$TMP/devices" > "$TMP/devices.new" && mv "$TMP/devices.new" "$TMP/devices"
+    [ "$t" = skip ] || printf '%s %s\n' "$d" "$t" >> "$TMP/devices"
+  done < "$DEVICES_CONF"
+fi
+while read -r dev type; do
+  [ -n "$dev" ] && [ -n "$type" ] || continue
+  case "$type" in
+    nvme*) frame "smartctl.dev:$dev:$type" 120 smartctl -j -x -d "$type" "$dev" ;;
+    *) frame "smartctl.dev:$dev:$type" 120 smartctl -j -x -n "standby,$STANDBY_EXIT" -d "$type" "$dev" ;;
+  esac
+done < "$TMP/devices"
+
+if command -v zpool >/dev/null 2>&1; then
+  frame zpool.list 30 zpool list -Hp -o name,health,size,alloc,free,frag,cap
+  frame zpool.status 60 zpool status -p
+  frame zpool.status_json 60 zpool status -j -p  # OpenZFS 2.3+; a non-zero rc elsewhere is expected
+fi
+if command -v btrfs >/dev/null 2>&1; then
+  findmnt -t btrfs -n -o TARGET,UUID 2>/dev/null | awk '!seen[$2]++' > "$TMP/btrfs" || true
+  frame btrfs.mounts 10 cat "$TMP/btrfs"
+  while read -r target uuid; do
+    [ -n "$uuid" ] || continue
+    frame "btrfs.stats:$uuid" 30 btrfs device stats "$target"
+    frame "btrfs.scrub:$uuid" 30 btrfs scrub status "$target"
+  done < "$TMP/btrfs"
+fi
+if [ -r /proc/mdstat ]; then
+  frame mdstat 5 cat /proc/mdstat
+  for md in /sys/block/md*; do
+    [ -e "$md" ] || continue
+    name=${md##*/}
+    frame "md.detail:$name" 30 mdadm --detail --export "/dev/$name"
+  done
+fi
+frame lsblk 30 lsblk -J -b -o KNAME,TYPE,SIZE,ROTA,SERIAL,MODEL,WWN,TRAN,PKNAME,FSTYPE,MOUNTPOINT
+frame os.release 5 cat /etc/os-release
+printf 'PROBE-END version=%s frames=%s\n' "$VERSION" "$N"
+exit 0

@@ -1,0 +1,11 @@
+[Unit]
+Description=drivecanary: hourly collection
+
+[Timer]
+OnCalendar=hourly
+RandomizedDelaySec=2min
+Unit=drivecanary-collect.service
+Persistent=true
+
+[Install]
+WantedBy=timers.target

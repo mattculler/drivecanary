@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="summary">
+  <span class="badge big v-{{ ov.verdict.value }}">{{ ov.verdict.value }}</span>
+  <span class="counts">{% for k, n in ov.counts.items()|sort %}<span><b>{{ n }}</b> {{ k }}</span>{% endfor %}</span>
+  {% if ov.last_run %}
+    <span class="muted">collected {{ ov.last_run.started_at|ago(now) }}: {{ ov.last_run.hosts_ok }} of {{ ov.last_run.hosts_expected }} hosts ok</span>
+  {% else %}
+    <span class="muted">nothing collected yet</span>
+  {% endif %}
+  {% for h in ov.hosts if h.host.state in ('unreachable', 'broken') %}
+    <span class="problem"><a class="plain" href="/host/{{ h.host.id }}">{{ h.host.name }}</a> {{ h.host.state }}{% if h.host.unreachable_since %} since {{ h.host.unreachable_since|ago(now) }}{% endif %}</span>
+  {% endfor %}
+</section>
+
+<h2>Drives</h2>
+<div class="tbl"><table>
+<tr>
+  <th>status</th><th>host</th><th>drive</th><th>serial</th><th class="num">size</th>
+  <th class="num" title="temperature, °C">°C</th><th class="num" title="power-on hours">hours</th>
+  <th class="num" title="5 Reallocated_Sector_Ct">realloc</th>
+  <th class="num" title="187 Reported_Uncorrect">uncorr</th>
+  <th class="num" title="188 Command_Timeout">timeout</th>
+  <th class="num" title="197 Current_Pending_Sector">pending</th>
+  <th class="num" title="198 Offline_Uncorrectable">offline</th>
+  <th title="NVMe: endurance used / available spare / media errors">nvme</th>
+  <th>read</th><th class="wrap">why</th>
+</tr>
+{% for d in ov.drives %}
+{% set r = d.latest %}
+<tr class="r-{{ d.verdict.value }}">
+  <td>{% with v=d.verdict %}{% include "_badge.html" %}{% endwith %}</td>
+  <td>{% if d.host %}<a class="plain" href="/host/{{ d.host.id }}">{{ d.host.name }}</a>{% if d.dev_name %} <span class="muted">{{ d.dev_name }}</span>{% endif %}{% else %}<span class="muted">?</span>{% endif %}</td>
+  <td><span class="kind">{{ d.drive.kind }}</span><a href="/drive/{{ d.drive.id }}">{{ d.drive.label }}</a></td>
+  <td class="muted">{{ d.drive.serial or d.drive.serial_key }}</td>
+  <td class="num">{{ d.drive.capacity_bytes|bytes }}</td>
+  <td class="num">{{ r.temp_c if r and r.temp_c is not none else '' }}</td>
+  <td class="num">{{ '{:,}'.format(r.power_on_hours) if r and r.power_on_hours is not none else '' }}</td>
+  {% for a in (5, 187, 188, 197, 198) %}<td class="num">{{ d.counters[a] if a in d.counters else '' }}</td>{% endfor %}
+  <td>{% if r and r.nvme_percentage_used is not none %}{{ r.nvme_percentage_used }}% / {{ r.nvme_available_spare }}% / {{ r.nvme_media_errors }}{% endif %}</td>
+  <td class="muted" title="{{ r.collected_at|dt if r else '' }}">{{ r.collected_at|ago(now) if r else 'never' }}</td>
+  <td class="why">{{ d.reasons|join('; ') }}</td>
+</tr>
+{% else %}
+<tr><td colspan="15" class="muted">No drives yet. Add a host (<code>drivecanary host add</code>) and collect, or import attrlogs.</td></tr>
+{% endfor %}
+</table></div>
+
+{% if ov.pools %}
+<h2>Pools</h2>
+<div class="tbl"><table>
+<tr><th>status</th><th>host</th><th>kind</th><th>pool</th><th>health</th><th class="num">read</th><th class="num">write</th><th class="num">cksum</th><th>scrub</th><th>read</th><th class="wrap">why</th></tr>
+{% for p in ov.pools %}{% set s = p.latest %}
+<tr class="r-{{ p.verdict.value }}">
+  <td>{% with v=p.verdict %}{% include "_badge.html" %}{% endwith %}</td>
+  <td><a class="plain" href="/host/{{ p.host.id }}">{{ p.host.name }}</a></td>
+  <td><span class="kind">{{ p.pool.kind }}</span></td>
+  <td><a href="/pool/{{ p.pool.id }}">{{ p.pool.name }}</a></td>
+  <td>{{ s.health if s else '' }}</td>
+  <td class="num">{{ s.read_errors if s and s.read_errors is not none else '' }}</td>
+  <td class="num">{{ s.write_errors if s and s.write_errors is not none else '' }}</td>
+  <td class="num">{{ s.cksum_errors if s and s.cksum_errors is not none else '' }}</td>
+  <td class="why">{{ (s.scrub or '')[:90] if s else '' }}</td>
+  <td class="muted">{{ s.collected_at|ago(now) if s else 'never' }}</td>
+  <td class="why">{{ (s.reasons or '').replace('\n', '; ') if s else '' }}</td>
+</tr>
+{% endfor %}
+</table></div>
+{% endif %}
+
+<h2>Hosts</h2>
+{% include "_hosts_table.html" %}
+{% endblock %}

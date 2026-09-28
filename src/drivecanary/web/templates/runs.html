@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}runs · drivecanary{% endblock %}
+{% block content %}
+<h1>Collection runs</h1>
+<div class="tbl"><table>
+<tr><th>started</th><th>trigger</th><th class="num">expected</th><th class="num">ok</th><th class="num">failed</th><th>took</th></tr>
+{% for r in runs %}
+<tr class="r-{{ 'fail' if r.hosts_failed else 'ok' }}"><td title="{{ r.started_at|dt }}">{{ r.started_at|dt }}</td><td>{{ r.trigger }}</td><td class="num">{{ r.hosts_expected }}</td><td class="num">{{ r.hosts_ok }}</td><td class="num">{{ r.hosts_failed }}</td>
+<td class="muted">{% if r.finished_at %}{{ ((r.finished_at - r.started_at).total_seconds())|round|int }} s{% else %}running{% endif %}</td></tr>
+{% else %}<tr><td colspan="6" class="muted">no runs yet</td></tr>{% endfor %}
+</table></div>
+{% endblock %}

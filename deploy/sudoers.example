@@ -1,0 +1,9 @@
+# Passwordless drivecanary for members of the sudo group. Install with:
+#   sudo install -m 0440 /opt/drivecanary/deploy/sudoers.example /etc/sudoers.d/drivecanary && sudo visudo -c
+#
+# 1. the CLI, run as the service user (`drivecanary status`, `drivecanary host add`, `drivecanary collect`, ...)
+%sudo ALL=(drivecanary) NOPASSWD: /usr/local/bin/drivecanary
+# 2. `drivecanary update`, run as root. It runs the ROOT-OWNED copy of update.sh that install.sh and update.sh
+#    keep in /usr/local/sbin, not the checkout's copy: the checkout is owned by the service user, and a
+#    passwordless root rule on a file that user can write would hand root to anyone who got the service account.
+%sudo ALL=(root) NOPASSWD: /usr/local/sbin/drivecanary-update
