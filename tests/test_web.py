@@ -232,6 +232,35 @@ def test_what_is_running_is_said_wherever_the_thing_is_named(
     assert "self-test 90%" in host and "scrub 18.42%" in host
 
 
+def test_a_hosts_page_says_when_its_drives_test_themselves(
+    cfg: Config, factory: sessionmaker[Session], probe_env: ProbeEnv
+) -> None:
+    _populated(cfg, factory, probe_env)
+    client = TestClient(create_app(cfg))
+    page = client.get("/host/atlas").text
+    section = page.split("<h2>Self-tests")[1].split("<h2>Attempts")[0]
+    assert "smartd is active" in section
+    assert (
+        "<code>(S/../17/./01|L/01/19/./01)</code>" in section and "<code>(S/../17/./02|L/07/19/./01)</code>" in section
+    )
+    assert "-17 01:00" in section and "-01-19 01:00" in section and "-07-19 01:00" in section
+    assert section.count("none scheduled") == 1, "the NVMe drive is left to DEVICESCAN, which schedules nothing"
+    assert "24.6 h" in section, "what the 14 TB drive says its long test takes"
+    assert "Short offline: Completed without error" in section
+    with factory() as s:
+        host = s.scalar(select(Host))
+        assert host is not None
+        host.smartd_state = "inactive"
+        s.commit()
+    assert "nothing running to start the tests: smartd is inactive" in client.get("/host/atlas").text
+    with factory() as s:
+        host = s.scalar(select(Host))
+        assert host is not None
+        host.smartd_conf = None
+        s.commit()
+    assert "has not said what its schedule is" in client.get("/host/atlas").text
+
+
 def test_formatters() -> None:
     assert fmt_bytes(20000588955136) == "20.0 TB" and fmt_bytes(500107862016) == "500 GB" and fmt_bytes(None) == ""
     from datetime import timedelta

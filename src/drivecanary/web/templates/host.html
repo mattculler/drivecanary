@@ -45,6 +45,31 @@
 </table></div>
 {% endif %}
 
+<h2>Self-tests <span class="muted">{% if host.smartd_state == "cron" %}started by cron{% elif host.smartd_state %}smartd is {{ host.smartd_state }}{% endif %}</span></h2>
+{% if host.smartd_conf is none %}
+<p class="muted">This host has not said what its schedule is: that comes with version 3 of the probe (run install-host.sh for it again).</p>
+{% else %}
+{% if not selftests|selectattr("entry")|list %}<p class="muted">Nothing schedules a self-test on this host. <code>install-host.sh {{ host.name }} ... --self-tests</code> gives every drive a short test each month and a long one each year, each on a date of its own.</p>{% endif %}
+{% if host.smartd_state and host.smartd_state not in ("active", "cron") and selftests|selectattr("entry")|list %}<p class="problem">There is a schedule, and nothing running to start the tests: smartd is {{ host.smartd_state }}.</p>{% endif %}
+<div class="tbl"><table>
+<tr><th>dev</th><th>drive</th><th>next short test</th><th>next long test</th><th title="by the drive's own word">a long test takes</th><th>last test</th><th>as smartd has it</th></tr>
+{% for t in selftests %}
+<tr>
+  <td>{{ t.dev_name }}</td>
+  <td><a href="/drive/{{ t.drive.id }}">{{ t.drive.label }}</a>{% with testing=t.testing %}{% include "_running.html" %}{% endwith %}</td>
+  {% if t.entry %}
+  <td>{{ t.entry.next.short.strftime("%a %Y-%m-%d %H:00") if t.entry.next.short else "" }}</td>
+  <td>{{ t.entry.next.long.strftime("%a %Y-%m-%d %H:00") if t.entry.next.long else "" }}</td>
+  {% else %}<td colspan="2" class="muted">none scheduled</td>{% endif %}
+  <td class="muted">{% if t.long_takes_minutes %}{{ "%.1f"|format(t.long_takes_minutes / 60) }} h{% endif %}</td>
+  <td class="why">{% if t.last %}{{ t.last }}{% if t.last_age_hours is not none %}, {{ (t.last_age_hours / 24)|round|int }} d of power-on time ago{% endif %}{% else %}<span class="muted">never</span>{% endif %}</td>
+  <td class="muted">{% if t.entry %}<code>{{ t.entry.regex }}</code>{% if t.entry.problem %} <span class="problem">{{ t.entry.problem }}</span>{% endif %}{% if t.entry.device == "DEVICESCAN" %} (DEVICESCAN){% endif %}{% endif %}</td>
+</tr>
+{% else %}<tr><td colspan="7" class="muted">no drives seen on this host yet</td></tr>{% endfor %}
+</table></div>
+<p class="muted">Times are this host's own clock ({{ host.tz or cfg.collect.default_tz }}). Tests are kept apart by their dates, not by anything that watches: a scrub started by hand can meet one.</p>
+{% endif %}
+
 <h2>Attempts</h2>
 <div class="tbl"><table>
 <tr><th>started</th><th>how</th><th>result</th><th class="num">drives</th><th class="num">bytes</th><th class="num">ssh rc</th><th>host clock</th><th class="wrap">reason</th></tr>

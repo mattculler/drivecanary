@@ -12,6 +12,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from drivecanary import selftests
 from drivecanary.config import Config
 from drivecanary.models import (
     AttrSample,
@@ -393,3 +394,50 @@ def since_for(window: str, now: datetime) -> datetime | None:
         return now - timedelta(days=n * units[u])
     except (ValueError, KeyError):
         return now - timedelta(days=30)
+
+
+# --------------------------------------------------------------------------- a host's self-tests
+
+
+@dataclass
+class SelftestRow:
+    drive: Drive
+    dev_name: str
+    entry: selftests.Entry | None  # what governs this drive; None: nothing schedules a test for it
+    last: str | None  # what the last test was and how it went
+    last_age_hours: int | None  # in power-on time
+    long_takes_minutes: int | None  # by the drive's own word
+    testing: int | None
+
+
+def host_selftests(session: Session, cfg: Config, host: Host, now: datetime) -> list[SelftestRow]:
+    """Every drive now on a host, with when it next tests itself. The times are the host's own clock's,
+    which is what smartd goes by."""
+    from drivecanary.timeutil import zone
+
+    local = now.astimezone(zone(host.tz or cfg.collect.default_tz)).replace(tzinfo=None)
+    entries = selftests.schedule(host.smartd_conf, local)
+    rows: list[SelftestRow] = []
+    sightings = session.scalars(
+        select(DriveSighting)
+        .where(DriveSighting.host_id == host.id, DriveSighting.current)
+        .order_by(DriveSighting.dev_name)
+    )
+    for s in sightings:
+        report = latest_report(session, s.drive_id)
+        entry = selftests.entry_for(entries, s.dev_name, s.drive.serial_key)
+        last = None
+        if report is not None and report.selftest_last:
+            last = f"{report.selftest_type}: {report.selftest_last}" if report.selftest_type else report.selftest_last
+        rows.append(
+            SelftestRow(
+                drive=s.drive,
+                dev_name=s.dev_name,
+                entry=entry if entry is not None and entry.regex else None,
+                last=last,
+                last_age_hours=report.selftest_age_hours if report is not None else None,
+                long_takes_minutes=report.long_test_minutes if report is not None else None,
+                testing=running_selftest(session, s.drive_id, cfg, now),
+            )
+        )
+    return rows

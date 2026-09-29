@@ -243,6 +243,7 @@ def create_app(config: Config | None = None) -> FastAPI:
             pools=pools,
             cursors=cursors,
             installed=installed,
+            selftests=queries.host_selftests(db, cfg, host, utcnow()),
             current=current,
             behind=behind,
         )
