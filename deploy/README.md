@@ -100,6 +100,22 @@ DEVICESCAN -a -o on -S on -n standby,q -s (S/../.././02|L/../../6/03) -W 4,45,55
 with `smartd-notify` a few lines that post `$SMARTD_MESSAGE` to ntfy or whatever you read. `smartd -q
 showtests` confirms the schedule parses. The hub does not alert.
 
+## What a drive's page goes by
+
+Attribute names are smartctl's, from its drive database on the host that read the drive: what an id means is
+the vendor's to decide (233 is a wearout indicator on Intel and gigabytes written on WD). A drive that
+database does not know gets generic names, and its page says so; `update-smart-drivedb` on the host, or a
+newer smartmontools, may know it. Nothing new is read from the drive by that: the drive reports what it
+reports, and the database only says what it means.
+
+Wear on a SATA SSD is charted two ways: the standard figure (the Percentage Used Endurance Indicator of the
+ATA device statistics, which means the same on every vendor's drive, and warns at
+`[status].nvme_percentage_used_warn` like NVMe's), and the vendor's own attributes, found by name.
+
+The ATA error log is a WARN only for entries from the last `[status].error_log_recent_hours` power-on hours,
+and only for the two kinds that mean something: a read or addressing error (the drive), and a CRC error (the
+cable, the backplane or the controller). An aborted command is usually one the drive does not support.
+
 ## Backups
 
 `drivecanary-backup.timer` builds one bundle a night in `/var/lib/drivecanary/backups` and keeps 14. For the
