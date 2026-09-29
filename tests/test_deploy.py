@@ -118,7 +118,7 @@ def test_the_hub_runs_the_ingest_listener_as_the_collector() -> None:
 
 #: each host script's VERSION, and the sha256 of the file that carries it
 RELEASED = {
-    "probe": (2, "8cccf4bdb68a723b52ac609bf54c3ca37377c8c509f5006083e5a04247180752"),
+    "probe": (3, "029cc921d34c1cb472174ee1245a3d348af0364bcf7bcdacc1f0c4d1b5cfd092"),
     "gate": (2, "a0348ea47356fccd17de7bde1f5c85d0badcc85bd1fa9a497daf21d44f1bc5c9"),
     "agent": (2, "9406824c0b16a3b76b37162ac03136657e43af5c89a8f22bcb032b05c22d12d8"),
 }

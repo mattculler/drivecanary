@@ -58,6 +58,8 @@ def test_collect_envelope_ingests(probe_env: ProbeEnv, session: Session, cfg: Co
     assert "smartctl.dev:/dev/sr0:scsi" not in names, "a device with open_error is left alone"
     assert len(names) == len(set(names)), "every device is read once"
     assert "zpool.list" in names and "btrfs.stats:1234-uuid" in names and "lsblk" in names
+    assert env.frame("smartd.conf") is not None and b"BEGIN drivecanary self-tests" in env.frame("smartd.conf").out
+    assert env.frame("smartd.active") is not None and env.frame("smartd.active").text == "active\n"
     assert env.frame("probe.exit") is not None and env.frame("probe.exit").rc == 0
     attr = env.prefixed("attrlog:")[0]
     assert attr.attrs["offset"] == "0" and int(attr.attrs["size"]) == len(attr.out)
@@ -71,7 +73,7 @@ def test_collect_envelope_ingests(probe_env: ProbeEnv, session: Session, cfg: Co
     res = ingest_envelope(session, host=host, attempt=attempt, env=env, cfg=cfg)
     session.commit()
     assert res.drives == 3 and res.runs == 3 and res.pools == 3 and res.attrlog_lines == 20
-    assert host.smartctl_version == "7.4" and host.gate_version == 2 and host.probe_version == 2 and host.machine_id
+    assert host.smartctl_version == "7.4" and host.gate_version == 2 and host.probe_version == 3 and host.machine_id
 
     drives = {d.serial_key: d for d in session.scalars(select(Drive))}
     assert len(drives) == 4  # sda, sdb, nvme0 from smartctl; the attrlog drive from its file name

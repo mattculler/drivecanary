@@ -17,13 +17,16 @@
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 LC_ALL=C
 export PATH LC_ALL
-VERSION=2
+VERSION=3
 STANDBY_EXIT=3
 DEVICES_CONF=/etc/drivecanary/devices.conf
+SCHEDULE=/etc/smartd.conf
 LOCKDIR=/run/lock
 OS=$(uname -s)
 case "$OS" in FreeBSD)
   DEVICES_CONF=/usr/local/etc/drivecanary/devices.conf
+  # no smartd there: cron starts the tests, and this file says when, in smartd.conf's words
+  SCHEDULE=/usr/local/etc/drivecanary/selftests.conf
   LOCKDIR=/var/run ;;
 esac
 umask 077
@@ -104,6 +107,13 @@ if [ "$OS" = Linux ] && [ -r /proc/mdstat ]; then
     name=${md##*/}
     frame "md.detail:$name" 30 mdadm --detail --export "/dev/$name"
   done
+fi
+# when this host's drives test themselves, and whether anything is there to start them
+if [ -r "$SCHEDULE" ]; then frame smartd.conf 5 cat "$SCHEDULE"; fi
+if [ "$OS" = FreeBSD ]; then
+  frame smartd.active 5 sh -c '[ -r /usr/local/etc/cron.d/drivecanary-selftests ] && echo cron || echo none'
+else
+  frame smartd.active 10 sh -c 'systemctl is-active smartd 2>/dev/null || systemctl is-active smartmontools 2>/dev/null'
 fi
 if [ "$OS" = FreeBSD ]; then
   frame geom.disks 30 geom disk list

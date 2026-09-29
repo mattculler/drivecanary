@@ -125,6 +125,16 @@ FREEBSD_SCAN_JSON = """{
 }
 """
 
+#: a host whose install was given --self-tests: sda and sdb by their by-id names, the rest left to DEVICESCAN
+SMARTD_CONF = """# /etc/smartd.conf
+# BEGIN drivecanary self-tests
+/dev/disk/by-id/ata-WDC_WD140EDFZ-11A0VA0_9RK1XXXX -d removable -n standby -m root -s (S/../17/./01|L/01/19/./01)
+/dev/disk/by-id/ata-Hitachi_HDS721050DLE630_MSK423Y20S3HBC -d removable -n standby -s (S/../17/./02|L/07/19/./01)
+# END drivecanary self-tests
+DEVICESCAN -d removable -n standby -m root -M exec /usr/share/smartmontools/smartd-runner
+/dev/never -s S/../.././02
+"""
+
 ZPOOL_LIST = (
     "tank\tONLINE\t8001563222016\t3000000000000\t5001563222016\t4\t37\n"
     "backup\tDEGRADED\t4000000000000\t1000000000000\t3000000000000\t1\t25\n"
@@ -278,6 +288,10 @@ def probe_env(tmp_path: Path) -> ProbeEnv:
     # a lock of this test's own: the real one is system-wide, and one test's probe must not turn away another's
     text = text.replace("LOCKDIR=/run/lock", f"LOCKDIR={tmp_path}", 1)
     text = text.replace("LOCKDIR=/var/run", f"LOCKDIR={tmp_path}", 1)
+    text = text.replace("SCHEDULE=/etc/smartd.conf", f"SCHEDULE={tmp_path}/smartd.conf", 1)
+    freebsd_schedule = "SCHEDULE=/usr/local/etc/drivecanary/selftests.conf"
+    text = text.replace(freebsd_schedule, f"SCHEDULE={tmp_path}/smartd.conf", 1)
+    (tmp_path / "smartd.conf").write_text(SMARTD_CONF)
     text = text.replace("DEVICES_CONF=/usr/local/etc/drivecanary/devices.conf", f"DEVICES_CONF={devices_conf}", 1)
     probe.write_text(text)
     text = (HOST_DIR / "gate").read_text()
@@ -345,6 +359,7 @@ exit 1
     (tmp_path / "lsblk.json").write_text(LSBLK_JSON)
     _shim(shims / "lsblk", f'cat "{tmp_path}/lsblk.json"\n')
     _shim(shims / "mdadm", 'echo "MD_LEVEL=raid1"\n')
+    _shim(shims / "systemctl", 'case "$1" in is-active) echo active ;; esac\n')
     return ProbeEnv(
         gate=gate,
         probe=probe,

@@ -53,7 +53,7 @@ def test_pages(cfg: Config, factory: sessionmaker[Session], probe_env: ProbeEnv)
     assert client.get("/host/nobody").status_code == 404 and client.get("/host/999").status_code == 404
     assert 'href="/host/atlas"' in body and 'href="/host/1"' not in body
     assert "<dt>smartctl</dt><dd>7.4</dd>" in r.text
-    assert "<dt>drivecanary</dt><dd>gate v2, probe v2</dd>" in r.text and "behind" not in r.text
+    assert "<dt>drivecanary</dt><dd>gate v2, probe v3</dd>" in r.text and "behind" not in r.text
     assert "<h1>atlas <span" in r.text and "atlas.domain" in r.text
     with factory() as s:
         host = s.scalar(select(Host))
@@ -61,7 +61,7 @@ def test_pages(cfg: Config, factory: sessionmaker[Session], probe_env: ProbeEnv)
         host.probe_version, host.address = 1, "atlas"
         s.commit()
     old = client.get("/host/atlas").text
-    assert "behind: probe is v2 now. Run install-host.sh for this host again." in old
+    assert "behind: probe is v3 now. Run install-host.sh for this host again." in old
     assert "<h1>atlas</h1>" in old, "an address that is the name again says nothing"
     r = client.get("/runs")
     assert r.status_code == 200 and "manual" in r.text
