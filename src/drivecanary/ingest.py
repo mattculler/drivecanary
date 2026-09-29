@@ -106,6 +106,9 @@ def ingest_envelope(session: Session, *, host: Host, attempt: HostAttempt, env: 
     if ver:
         m = re.search(r"smartctl (\S+)", ver)
         host.smartctl_version = m.group(1) if m else ver[:64]
+    lsblk = env.frame("lsblk")
+    if lsblk is not None and lsblk.rc == 0 and lsblk.out:
+        host.block_devices = lsblk.text
     osr = env.frame("os.release")
     if osr is not None:
         m = re.search(r'^PRETTY_NAME="?([^"\n]+)"?', osr.text, re.M)

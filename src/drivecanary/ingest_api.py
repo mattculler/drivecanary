@@ -60,6 +60,7 @@ def create_ingest_app(config: Config | None = None) -> FastAPI:
                     encoding=request.headers.get("content-encoding"),
                     agent_failures=_count(request.headers.get("x-agent-failures")),
                     agent_last_failure=request.headers.get("x-agent-last-failure"),
+                    agent_version=_count(request.headers.get("x-agent-version")) or None,
                 )
 
         reply = await run_in_threadpool(store)

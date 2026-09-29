@@ -104,6 +104,7 @@ def receive(
     encoding: str | None = None,
     agent_failures: int = 0,
     agent_last_failure: str | None = None,
+    agent_version: int | None = None,
 ) -> PushReply:
     if not token:
         return PushReply(401, ["refused: no token (Authorization: Bearer ...)"])
@@ -145,6 +146,8 @@ def receive(
             pushed = s.get(Host, host_id)
             assert pushed is not None
             pushed.last_attempt_at = now
+            if agent_version:
+                pushed.agent_version = agent_version
             s.commit()
             attempt_id = attempt.id
         outcome = ingest_result(cfg, factory, host_id, attempt_id, SshResult(rc=0, out=data, err=b""))

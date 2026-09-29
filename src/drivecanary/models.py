@@ -108,6 +108,8 @@ class Host(Base):
     push_token_hash: Mapped[str | None] = mapped_column(String(64))  # sha256 of the agent's token (push)
     gate_version: Mapped[int | None] = mapped_column(Integer)
     probe_version: Mapped[int | None] = mapped_column(Integer)
+    agent_version: Mapped[int | None] = mapped_column(Integer)  # push hosts
+    block_devices: Mapped[str | None] = mapped_column(Text)  # the latest lsblk -J: how a pool's members are found
     os_release: Mapped[str | None] = mapped_column(String(128))
     smartctl_version: Mapped[str | None] = mapped_column(String(64))
     last_success_at: Mapped[datetime | None] = mapped_column(Epoch)
