@@ -69,6 +69,7 @@ identity smartctl knows (model family, firmware, WWN, capacity), the pools, and 
 - `src/drivecanary/queries.py` — what the page and `drivecanary status` show; `web/` — the page.
 - `deploy/` — the VM install (`install.sh`, `update.sh`, `backup.sh`, units) and `deploy/host/` — what goes
   on each monitored host (`probe`, `gate`, `agent`, `sudoers`, `install-host.sh`). See `deploy/README.md`.
+- `scripts/make_icons.py` — cuts the page's icons from `docs/logo.jpg` (run by hand when the logo changes).
 - `data/attrlogs/` — attrlog CSVs pulled by hand from hosts (atlas's, in their own commit);
   `data/legacy-smartctl-text/` — two 2017 `smartctl -a` captures from storage1 and storage2, kept as history.
 - `tests/fixtures/smartctl/` — real `smartctl -j` captures (from Scrutiny's test data, MIT) covering ATA,

@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Annotated, Any
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
@@ -26,10 +26,6 @@ from drivecanary.timeutil import hours_ago, utcnow
 
 TEMPLATES = Path(__file__).parent / "templates"
 STATIC = Path(__file__).parent / "static"
-
-FAVICON = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><circle cx="16" cy="16" r="15" fill="#fbbf24"/>
-<circle cx="12" cy="13" r="2" fill="#1f2937"/><path d="M18 15l7 2-7 2z" fill="#f97316"/>
-<path d="M6 20q10 8 20 0" stroke="#1f2937" stroke-width="2" fill="none"/></svg>"""
 
 
 def get_session(request: Request) -> Iterator[Session]:
@@ -223,8 +219,9 @@ def create_app(config: Config | None = None) -> FastAPI:
             }
         )
 
-    @app.get("/favicon.svg")
+    @app.get("/favicon.ico")
     def favicon() -> Response:
-        return Response(FAVICON, media_type="image/svg+xml")
+        """For whatever asks for the usual path without reading the page; the pages name their icons."""
+        return FileResponse(STATIC / "favicon-32.png", media_type="image/png")
 
     return app
