@@ -172,6 +172,26 @@ class StatusConfig(Section):
     )
 
 
+# --------------------------------------------------------------------------- push
+
+
+class IngestConfig(Section):
+    """Where push agents deliver: hosts that are only up on demand, or that should hold no inbound key
+    (the hypervisor the hub runs on). A service of its own, run by the collector user; the page stays
+    read-only."""
+
+    bind: str = Field(default="0.0.0.0", description="Address the ingest listener binds to.")
+    port: int = Field(default=8081, ge=1, le=65535, description="TCP port; the agents' HUB_URL names it.")
+    max_body_mb: int = Field(
+        default=32,
+        ge=1,
+        description=(
+            "A request body larger than this is refused before it is read. Agents gzip what they send; what it "
+            "inflates to is held to [collect].max_output_mb (megabytes)."
+        ),
+    )
+
+
 # --------------------------------------------------------------------------- web / logging
 
 
@@ -204,6 +224,7 @@ class Config(Section):
     paths: PathsConfig = Field(default_factory=PathsConfig)
     collect: CollectConfig = Field(default_factory=CollectConfig)
     status: StatusConfig = Field(default_factory=StatusConfig)
+    ingest: IngestConfig = Field(default_factory=IngestConfig)
     web: WebConfig = Field(default_factory=WebConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
 

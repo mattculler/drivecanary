@@ -92,6 +92,22 @@ nvme_percentage_used_warn = 90
 # the drive page anyway.
 error_log_is_warn = false
 
+[ingest]
+# Where push agents deliver: hosts that are only up on demand, or that should
+# hold no inbound key (the hypervisor the hub runs on). A service of its own,
+# run by the collector user; the page stays read-only.
+
+# Address the ingest listener binds to.
+bind = "0.0.0.0"
+
+# TCP port; the agents' HUB_URL names it.
+port = 8081
+
+# A request body larger than this is refused before it is read. Agents gzip
+# what they send; what it inflates to is held to [collect].max_output_mb
+# (megabytes).
+max_body_mb = 32
+
 [web]
 # The LAN-only page. No auth.
 

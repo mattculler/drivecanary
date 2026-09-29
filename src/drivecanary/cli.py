@@ -36,7 +36,15 @@ db_app = typer.Typer(no_args_is_help=True, context_settings=HELP, help="Database
 host_app = typer.Typer(no_args_is_help=True, context_settings=HELP, help="The monitored hosts.")
 import_app = typer.Typer(no_args_is_help=True, context_settings=HELP, help="Bring history in by hand.")
 web_app = typer.Typer(no_args_is_help=True, context_settings=HELP, help="The web page.")
-for name, sub in (("config", config_app), ("db", db_app), ("host", host_app), ("import", import_app), ("web", web_app)):
+ingest_app = typer.Typer(no_args_is_help=True, context_settings=HELP, help="Where push agents deliver.")
+for name, sub in (
+    ("config", config_app),
+    ("db", db_app),
+    ("host", host_app),
+    ("import", import_app),
+    ("web", web_app),
+    ("ingest", ingest_app),
+):
     app.add_typer(sub, name=name)
 
 out = Console()
@@ -275,7 +283,9 @@ def host_add(
         str | None,
         typer.Option("--tz", help="The host's zone, if it is not what the host reports or [collect].default_tz."),
     ] = None,
-    transport: Annotated[str, typer.Option("--transport", help="pull (v1) or push.")] = "pull",
+    transport: Annotated[
+        str, typer.Option("--transport", help="pull: the hub reaches it over ssh. push: its agent reports in.")
+    ] = "pull",
     keyscan: Annotated[
         bool, typer.Option("--keyscan/--no-keyscan", help="Fetch and pin the host's ed25519 key now.")
     ] = True,
@@ -287,6 +297,7 @@ def host_add(
 ) -> None:
     """Add a monitored host (state `pending` until its first successful collection)."""
     from drivecanary.models import Transport
+    from drivecanary.push import new_token
     from drivecanary.timeutil import zone
 
     state = _state(ctx)
@@ -318,12 +329,46 @@ def host_add(
                 raise typer.Exit(1)
             host.hostkey = line
             typer.echo(f"pinned {host.address} {fp}")
+        token = None
+        if transport == "push":
+            token, host.push_token_hash = new_token()
         s.add(host)
         s.commit()
         _write_ssh_material(state, s)
+    if token is not None:
+        _say_token(state.config, name, token)
+        return
     typer.echo(
         f"added {name} ({host.address}, {transport}); it is pending until `drivecanary collect --host {name}` succeeds"
     )
+
+
+def _say_token(cfg: Config, name: str, token: str) -> None:
+    typer.echo(f"{name} is a push host; it is pending until its agent first reports.")
+    typer.echo("Its token, shown this once (the hub keeps only a hash):")
+    typer.echo(f"  {token}")
+    typer.echo("From your workstation, over your own ssh to the host:")
+    typer.echo(
+        f"  deploy/host/install-host.sh {name} --push --hub-url http://THIS-VM:{cfg.ingest.port} --token {token}"
+    )
+
+
+@host_app.command("token")
+def host_token(ctx: typer.Context, name: str) -> None:
+    """A new token for a push host (the old one stops working); making a pull host a push host is
+    `host set NAME --transport push`."""
+    from drivecanary.models import Transport
+    from drivecanary.push import new_token
+
+    state = _state(ctx)
+    with _factory(state)() as s:
+        host = _host(s, name)
+        if host.transport != Transport.PUSH.value:
+            err.print(f"[red]{name} is a {host.transport} host; tokens are for push hosts[/red]")
+            raise typer.Exit(2)
+        token, host.push_token_hash = new_token()
+        s.commit()
+    _say_token(state.config, name, token)
 
 
 @host_app.command("keyscan")
@@ -359,15 +404,29 @@ def host_set(
     state_: Annotated[
         str | None, typer.Option("--state", help="pending, paused (not tried, not counted) or retired (gone for good).")
     ] = None,
+    transport: Annotated[
+        str | None, typer.Option("--transport", help="pull or push; going to push makes a token.")
+    ] = None,
     note: Annotated[str | None, typer.Option("--note")] = None,
 ) -> None:
     """Change a host's row. Setting --state pending re-arms a paused or retired host."""
-    from drivecanary.models import HostState
+    from drivecanary.models import HostState, Transport
+    from drivecanary.push import new_token
     from drivecanary.timeutil import zone
 
     state = _state(ctx)
+    token = None
     with _factory(state)() as s:
         host = _host(s, name)
+        if transport is not None:
+            if transport not in {t.value for t in Transport}:
+                err.print("[red]--transport takes pull or push[/red]")
+                raise typer.Exit(2)
+            if transport == Transport.PUSH.value and host.transport != transport:
+                token, host.push_token_hash = new_token()
+            if transport == Transport.PULL.value:
+                host.push_token_hash = None
+            host.transport = transport
         if address is not None:
             host.address = address
         if user is not None:
@@ -389,6 +448,8 @@ def host_set(
         s.commit()
         _write_ssh_material(state, s)
     typer.echo(f"updated {name}")
+    if token is not None:
+        _say_token(state.config, name, token)
 
 
 @host_app.command("list")
@@ -584,6 +645,25 @@ def web_serve(ctx: typer.Context) -> None:
         factory=True,
         host=cfg.web.bind,
         port=cfg.web.port,
+        log_level="warning",
+        access_log=False,
+    )
+
+
+@ingest_app.command("serve")
+def ingest_serve(ctx: typer.Context) -> None:
+    """Listen for push agents on [ingest].bind:[ingest].port (uvicorn)."""
+    import uvicorn
+
+    state = _state(ctx)
+    cfg = state.config
+    if state.config_path is not None:
+        os.environ[CONFIG_ENV] = str(state.config_path)
+    uvicorn.run(
+        "drivecanary.ingest_api:create_ingest_app",
+        factory=True,
+        host=cfg.ingest.bind,
+        port=cfg.ingest.port,
         log_level="warning",
         access_log=False,
     )

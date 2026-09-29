@@ -58,6 +58,47 @@ def test_end_to_end_without_a_network(tmp_path: Path) -> None:
     assert r.exit_code == 0 and (tmp_path / "snap.db").exists() and not (tmp_path / "snap.db-wal").exists()
 
 
+def test_push_hosts_get_a_token_and_are_not_pulled(tmp_path: Path) -> None:
+    import re
+
+    from sqlalchemy import select
+
+    from drivecanary.config import load_config
+    from drivecanary.db import make_engine, sessionmaker_for
+    from drivecanary.models import Host
+    from drivecanary.push import hash_token
+
+    c = str(_config(tmp_path))
+    assert runner.invoke(app, ["-c", c, "db", "migrate"]).exit_code == 0
+    r = runner.invoke(app, ["-c", c, "host", "add", "pve", "--transport", "push"])
+    assert r.exit_code == 0 and "install-host.sh pve --push --hub-url" in r.output, r.output
+    token = re.search(r"--token (\S+)", r.output)
+    assert token is not None
+    engine = make_engine(load_config(Path(c)).db_path)
+
+    def stored(name: str) -> Host:
+        with sessionmaker_for(engine)() as s:
+            host = s.scalar(select(Host).where(Host.name == name))
+            assert host is not None
+            return host
+
+    assert stored("pve").push_token_hash == hash_token(token.group(1)) and stored("pve").hostkey is None
+    assert "pve" not in (tmp_path / "state" / "ssh" / "config").read_text(), "no ssh to a push host"
+    r = runner.invoke(app, ["-c", c, "collect", "--host", "pve"])
+    assert r.exit_code == 2 and "reports by itself" in r.output
+    r = runner.invoke(app, ["-c", c, "host", "token", "pve"])
+    rotated = re.search(r"--token (\S+)", r.output)
+    assert rotated is not None and rotated.group(1) != token.group(1)
+    assert stored("pve").push_token_hash == hash_token(rotated.group(1))
+    assert runner.invoke(app, ["-c", c, "host", "add", "atlas", "--no-keyscan"]).exit_code == 0
+    assert runner.invoke(app, ["-c", c, "host", "token", "atlas"]).exit_code == 2
+    r = runner.invoke(app, ["-c", c, "host", "set", "atlas", "--transport", "push"])
+    assert r.exit_code == 0 and "--token" in r.output and stored("atlas").push_token_hash
+    r = runner.invoke(app, ["-c", c, "host", "set", "atlas", "--transport", "pull"])
+    assert r.exit_code == 0 and stored("atlas").push_token_hash is None
+    engine.dispose()
+
+
 def test_a_pasted_ssh_keygen_line_is_a_fingerprint() -> None:
     """`ssh-keygen -lf` prints the size before the fingerprint and the key comment after it; pasting any of
     that must compare equal to the bare token (2026-09-28: '... does not match ... root@atlas')."""
