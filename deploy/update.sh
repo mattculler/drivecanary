@@ -41,7 +41,9 @@ systemctl daemon-reload
 sudo -u drivecanary -H env DRIVECANARY_CONFIG="$ETC/config.toml" "$APP/.venv/bin/drivecanary" config check
 sudo -u drivecanary -H env DRIVECANARY_CONFIG="$ETC/config.toml" "$APP/.venv/bin/drivecanary" db migrate
 date -Is > "$APP/.last-update"
-systemctl restart drivecanary-web.service
+# enable, not only restart: an install from before the ingest service existed has never had it started
+systemctl enable -q drivecanary-web.service drivecanary-ingest.service
+systemctl restart drivecanary-web.service drivecanary-ingest.service
 # every timer enabled and running, by name: `systemctl start 'drivecanary-*.timer'` matches only loaded units,
 # and after a `stop` the glob would start nothing
 for t in "$APP"/deploy/systemd/*.timer; do systemctl enable --now "$(basename "$t")"; done

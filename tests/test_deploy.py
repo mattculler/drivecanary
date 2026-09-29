@@ -109,6 +109,13 @@ def test_the_push_agent_is_what_the_design_says() -> None:
     assert 'rm -f "$HOME_DIR/.ssh/authorized_keys"' in install, "a push host holds no key of the hub's"
 
 
+def test_the_hub_runs_the_ingest_listener_as_the_collector() -> None:
+    ingest = (UNITS / "drivecanary-ingest.service").read_text()
+    assert "User=drivecanary\n" in ingest and "drivecanary ingest serve" in ingest
+    for name in ("install.sh", "update.sh"):
+        assert "drivecanary-ingest.service" in (DEPLOY / name).read_text(), name
+
+
 def test_the_cli_wrapper_and_update_are_installed_the_safe_way() -> None:
     wrapper = (DEPLOY / "drivecanary-cli").read_text()
     assert "sudo -u drivecanary" in wrapper and "update) exec sudo /usr/local/sbin/drivecanary-update" in wrapper

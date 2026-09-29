@@ -56,7 +56,7 @@ systemctl daemon-reload
 sudo -u drivecanary -H env DRIVECANARY_CONFIG="$ETC/config.toml" "$APP/.venv/bin/drivecanary" db migrate
 chmod 0660 "$STATE"/*.db 2>/dev/null || true
 date -Is > "$APP/.last-update"
-systemctl enable --now drivecanary-web.service
+systemctl enable --now drivecanary-web.service drivecanary-ingest.service
 for t in "$APP"/deploy/systemd/*.timer; do systemctl enable --now "$(basename "$t")"; done
 systemctl list-timers 'drivecanary-*' --no-pager
 echo

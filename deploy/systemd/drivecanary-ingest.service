@@ -1,0 +1,27 @@
+[Unit]
+Description=drivecanary: where push agents deliver (LAN only)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# the collector user: what arrives here is written to the database, which the page may only read
+User=drivecanary
+Group=drivecanary
+UMask=0007
+WorkingDirectory=/opt/drivecanary
+Environment=DRIVECANARY_CONFIG=/etc/drivecanary/config.toml
+StandardOutput=journal
+StandardError=journal
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/drivecanary
+# bind and port come from [ingest] in config.toml
+ExecStart=/opt/drivecanary/.venv/bin/drivecanary ingest serve
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
