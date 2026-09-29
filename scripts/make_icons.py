@@ -1,9 +1,10 @@
 """The page's icons, made from docs/logo.jpg: `python3 scripts/make_icons.py` (needs Pillow; run by hand when
 the logo changes, the results are committed).
 
-The logo's tile, a canary on a platter on a pale ground, does not survive being a favicon: at 16 and 32
-pixels it is a grey smudge. What does is the canary by itself, which is saturated yellow, on a dark tile. So
-the canary is cut out of the logo by its colour and set on the header's dark blue.
+Two pictures come out of the logo. The favicon is the canary by itself on nothing: cut out by its colour,
+saturated yellow holds at 16 pixels on a dark tab bar and a light one, where the logo's pale tile is a grey
+smudge. The header, and the icons a phone puts on its home screen, have room for the whole tile: the
+squircle with the canary on its platter, with nothing behind its rounded corners.
 """
 
 from __future__ import annotations
@@ -17,10 +18,11 @@ STATIC = ROOT / "src" / "drivecanary" / "web" / "static"
 
 #: where things are in docs/logo.jpg (1408 x 768), read off a ruler laid over it
 LOGO_SIZE = (1408, 768)
+TILE = (462, 94, 944, 578)  # the squircle, just inside its edge
+TILE_RADIUS = 0.23  # of its width
 CANARY = (692, 100, 972, 400)  # a box with the whole bird in it
 INSIDE = (130, 150)  # a point of that box that is certainly bird
 HEAD_ENDS = 140  # above this row of the box, holes in the yellow are eyes and beak, and are filled
-DARK = (31, 41, 55)  # the header's
 
 
 def cut_out_canary(logo: Image.Image) -> Image.Image:
@@ -50,16 +52,30 @@ def cut_out_canary(logo: Image.Image) -> Image.Image:
     return out.crop(keep.getbbox())
 
 
-def on_tile(canary: Image.Image, size: int, pad: float) -> Image.Image:
-    """The canary on a dark rounded tile, drawn at eight times the size and brought down."""
+def centred(canary: Image.Image, size: int, pad: float) -> Image.Image:
+    """The canary in a transparent square, drawn at eight times the size and brought down."""
     big = size * 8
-    tile = Image.new("RGBA", (big, big), (0, 0, 0, 0))
-    ImageDraw.Draw(tile).rounded_rectangle((0, 0, big - 1, big - 1), radius=int(big * 0.22), fill=(*DARK, 255))
+    square = Image.new("RGBA", (big, big), (0, 0, 0, 0))
     room = int(big * (1 - 2 * pad))
     scale = min(room / canary.size[0], room / canary.size[1])
     bird = canary.resize((int(canary.size[0] * scale), int(canary.size[1] * scale)), Image.LANCZOS)
-    tile.alpha_composite(bird, ((big - bird.size[0]) // 2, (big - bird.size[1]) // 2))
-    return tile.resize((size, size), Image.LANCZOS)
+    square.alpha_composite(bird, ((big - bird.size[0]) // 2, (big - bird.size[1]) // 2))
+    return square.resize((size, size), Image.LANCZOS)
+
+
+def tile(logo: Image.Image, size: int, *, rounded: bool) -> Image.Image:
+    """The logo's squircle. Rounded, there is nothing behind its corners; square, for a phone that rounds
+    an icon itself and paints black wherever it finds transparency."""
+    left, top, right, bottom = TILE
+    side = min(right - left, bottom - top)
+    out = logo.crop((left, top, left + side, top + side)).convert("RGBA")
+    if rounded:
+        mask = Image.new("L", (side * 4, side * 4), 0)
+        ImageDraw.Draw(mask).rounded_rectangle(
+            (0, 0, side * 4 - 1, side * 4 - 1), radius=int(side * 4 * TILE_RADIUS), fill=255
+        )
+        out.putalpha(mask.resize((side, side), Image.LANCZOS))
+    return out.resize((size, size), Image.LANCZOS)
 
 
 def main() -> None:
@@ -68,12 +84,11 @@ def main() -> None:
         raise SystemExit(f"docs/logo.jpg is {logo.size}, not {LOGO_SIZE}: measure CANARY, INSIDE and HEAD_ENDS again")
     canary = cut_out_canary(logo)
     made = {
-        "favicon-16.png": on_tile(canary, 16, 0.03),  # no room to spare at this size
-        "favicon-32.png": on_tile(canary, 32, 0.07),
-        "apple-touch-icon.png": on_tile(canary, 180, 0.12),
-        "icon-192.png": on_tile(canary, 192, 0.12),
-        # the header is dark already: the canary alone, for twice the size it is shown at
-        "canary.png": canary.resize((int(canary.size[0] * 56 / canary.size[1]), 56), Image.LANCZOS),
+        "favicon-16.png": centred(canary, 16, 0.0),  # no room to spare at this size
+        "favicon-32.png": centred(canary, 32, 0.02),
+        "icon-192.png": tile(logo, 192, rounded=True),
+        "apple-touch-icon.png": tile(logo, 180, rounded=False),
+        "logo-tile.png": tile(logo, 88, rounded=True),  # the header's, at twice the size it is shown
     }
     for name, image in made.items():
         image.save(STATIC / name, optimize=True)

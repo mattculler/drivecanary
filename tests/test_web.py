@@ -55,7 +55,7 @@ def test_pages(cfg: Config, factory: sessionmaker[Session], probe_env: ProbeEnv)
     r = client.get("/healthz")
     assert r.status_code == 200 and r.json()["ok"] and r.json()["last_collection_age_hours"] is not None
     icons = ("/favicon.ico", "/static/favicon-16.png", "/static/favicon-32.png", "/static/apple-touch-icon.png")
-    for icon in (*icons, "/static/canary.png"):
+    for icon in (*icons, "/static/logo-tile.png"):
         got = client.get(icon)
         assert got.status_code == 200 and got.content.startswith(b"\x89PNG"), icon
     assert 'href="/static/favicon-32.png"' in body and "favicon.svg" not in body
