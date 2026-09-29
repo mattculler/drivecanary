@@ -93,6 +93,36 @@ def test_drive_page_and_series(cfg: Config, factory: sessionmaker[Session], prob
     assert client.get(f"/api/drives/{ids[1]}/series?metric=bogus").status_code == 400
 
 
+def test_the_summary_counts_every_host_however_it_is_monitored(
+    cfg: Config, factory: sessionmaker[Session], probe_env: ProbeEnv
+) -> None:
+    """It read "1 of 1 hosts ok" with three hosts reporting: the count came from the last collection run,
+    and only pull hosts are in a run."""
+    import gzip
+
+    from drivecanary import push, queries
+    from drivecanary.models import HostState, Transport
+
+    _populated(cfg, factory, probe_env)  # atlas, pulled
+    tokens = {}
+    with factory() as s:
+        for name in ("pve", "opnsense", "nas"):
+            tokens[name], hashed = push.new_token()
+            s.add(Host(name=name, address=name, transport=Transport.PUSH.value, push_token_hash=hashed))
+        s.add(Host(name="attic", address="attic", state=HostState.PAUSED.value))
+        s.commit()
+    envelope = gzip.compress(probe_env.run_gate("drivecanary-collect").stdout)
+    for name in ("pve", "opnsense"):  # nas has not reported yet
+        assert push.receive(cfg, factory, token=tokens[name], body=envelope, encoding="gzip").status == 200
+        envelope = gzip.compress(probe_env.run_gate("drivecanary-collect").stdout)
+    with factory() as s:
+        ov = queries.overview(s, cfg)
+    assert (ov.hosts_ok, ov.hosts_watched) == (3, 4), "the paused one is not watched; nas is, and is not ok yet"
+    assert ov.last_run is not None and ov.last_run.hosts_expected == 1
+    body = TestClient(create_app(cfg)).get("/").text
+    assert "3 of 4 hosts ok, the latest heard from" in body and "1 of 1 hosts" not in body
+
+
 def test_a_sata_ssd_gets_its_wear_charted() -> None:
     from drivecanary.models import Drive
     from drivecanary.web.app import metrics_for

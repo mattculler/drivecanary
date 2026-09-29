@@ -83,9 +83,12 @@ class Overview:
     drives: list[DriveRow]
     hosts: list[HostRow]
     pools: list[PoolRow]
-    last_run: CollectionRun | None
+    last_run: CollectionRun | None  # the ssh collector's; push hosts are in no run
     verdict: Verdict
     counts: dict[str, int]
+    hosts_watched: int = 0  # every host that is neither paused nor retired, however it is monitored
+    hosts_ok: int = 0
+    last_heard: datetime | None = None  # the newest word from any host
 
 
 def latest_run(session: Session, drive_id: int) -> SmartRun | None:
@@ -201,7 +204,20 @@ def overview(session: Session, cfg: Config, now: datetime | None = None) -> Over
     counts: dict[str, int] = {}
     for v in verdicts:
         counts[v.value] = counts.get(v.value, 0) + 1
-    return Overview(now=now, drives=drives, hosts=hosts, pools=pools, last_run=last, verdict=overall, counts=counts)
+    watched = [h for h in hosts if h.host.active]
+    heard = [h.host.last_success_at for h in watched if h.host.last_success_at is not None]
+    return Overview(
+        now=now,
+        drives=drives,
+        hosts=hosts,
+        pools=pools,
+        last_run=last,
+        verdict=overall,
+        counts=counts,
+        hosts_watched=len(watched),
+        hosts_ok=sum(1 for h in watched if h.verdict == Verdict.OK),
+        last_heard=max(heard) if heard else None,
+    )
 
 
 # --------------------------------------------------------------------------- one drive

@@ -575,10 +575,14 @@ def status_cmd(ctx: typer.Context) -> None:
     with _factory(state)() as s:
         ov = queries.overview(s, cfg)
     typer.echo(f"overall: {ov.verdict.value.upper()}  " + "  ".join(f"{k} {v}" for k, v in sorted(ov.counts.items())))
+    if ov.last_heard:
+        typer.echo(
+            f"hosts: {ov.hosts_ok} of {ov.hosts_watched} ok, the latest heard from {ov.last_heard:%Y-%m-%d %H:%M} UTC"
+        )
     if ov.last_run:
         typer.echo(
-            f"last collection: {ov.last_run.started_at:%Y-%m-%d %H:%M} UTC, {ov.last_run.hosts_ok} ok / "
-            f"{ov.last_run.hosts_failed} failed of {ov.last_run.hosts_expected}"
+            f"last pull: {ov.last_run.started_at:%Y-%m-%d %H:%M} UTC, {ov.last_run.hosts_ok} ok / "
+            f"{ov.last_run.hosts_failed} failed of {ov.last_run.hosts_expected} pull hosts"
         )
     t = Table(title="drives")
     for col in ("verdict", "host", "dev", "model", "serial", "temp", "hours", "age", "why"):

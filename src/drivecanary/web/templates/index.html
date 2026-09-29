@@ -3,10 +3,12 @@
 <section class="summary">
   <span class="badge big v-{{ ov.verdict.value }}">{{ ov.verdict.value }}</span>
   <span class="counts">{% for k, n in ov.counts.items()|sort %}<span><b>{{ n }}</b> {{ k }}</span>{% endfor %}</span>
-  {% if ov.last_run %}
-    <span class="muted">collected {{ ov.last_run.started_at|ago(now) }}: {{ ov.last_run.hosts_ok }} of {{ ov.last_run.hosts_expected }} hosts ok</span>
+  {% if ov.last_heard %}
+    <span class="muted">{{ ov.hosts_ok }} of {{ ov.hosts_watched }} hosts ok, the latest heard from {{ ov.last_heard|ago(now) }}</span>
+  {% elif ov.hosts_watched %}
+    <span class="muted">no host has been heard from yet</span>
   {% else %}
-    <span class="muted">nothing collected yet</span>
+    <span class="muted">no hosts yet</span>
   {% endif %}
   {% for h in ov.hosts if h.host.state in ('unreachable', 'broken') %}
     <span class="problem"><a class="plain" href="/host/{{ h.host.id }}">{{ h.host.name }}</a> {{ h.host.state }}{% if h.host.unreachable_since %} since {{ h.host.unreachable_since|ago(now) }}{% endif %}</span>
