@@ -91,6 +91,11 @@ def metrics_for(drive: Drive, attr_ids: set[int]) -> list[dict[str, str]]:
         label, unit = queries.RUN_METRICS["scsi_grown_defects"]
         out.append({"metric": "scsi_grown_defects", "label": label, "unit": unit})
     else:
+        # wear, for solid state: the normalized value counts down from 100 whatever the vendor counts in the raw
+        for attr_id in (177, 231, 233, 202):
+            if attr_id in attr_ids:
+                label = f"{ATTR_LABELS.get(attr_id, 'Attribute')} ({attr_id}), normalized"
+                out.append({"metric": f"attr:{attr_id}:value", "label": label, "unit": ""})
         for attr_id in (5, 187, 188, 197, 198, 199, 193):
             if attr_id in attr_ids:
                 out.append(

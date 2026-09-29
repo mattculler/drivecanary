@@ -89,6 +89,15 @@ def test_drive_page_and_series(cfg: Config, factory: sessionmaker[Session], prob
     assert client.get(f"/api/drives/{ids[1]}/series?metric=bogus").status_code == 400
 
 
+def test_a_sata_ssd_gets_its_wear_charted() -> None:
+    from drivecanary.models import Drive
+    from drivecanary.web.app import metrics_for
+
+    ssd = Drive(model_key="x", serial_key="y", protocol="ATA", rotation_rate=0)
+    metrics = [m["metric"] for m in metrics_for(ssd, {5, 9, 177, 187, 241})]
+    assert metrics == ["temp", "poh", "attr:177:value", "attr:5", "attr:187"]
+
+
 def test_formatters() -> None:
     assert fmt_bytes(20000588955136) == "20.0 TB" and fmt_bytes(500107862016) == "500 GB" and fmt_bytes(None) == ""
     from datetime import timedelta
