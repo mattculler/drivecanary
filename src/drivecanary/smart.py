@@ -236,6 +236,8 @@ class SmartReport:
     selftest_last: str | None = None
     selftest_type: str | None = None
     selftest_hours: int | None = None  # the power-on hour it ran at
+    selftest_progress: int | None = None  # percent done of a self-test running now; None when none is
+    long_test_minutes: int | None = None  # what the drive says its long self-test takes
     #: ATA device statistics, "Percentage Used Endurance Indicator": the one wear figure that means the same
     #: on every vendor's SATA SSD, as percentage_used does on NVMe
     endurance_used: int | None = None
@@ -253,6 +255,14 @@ class SmartReport:
     @property
     def exit_flags(self) -> list[str]:
         return [EXIT_BITS[b] for b in range(8) if self.bit(b)]
+
+    @property
+    def selftest_age_hours(self) -> int | None:
+        """Power-on hours since the last self-test. The log counts the hour in sixteen bits and starts again
+        at 65,536: a test at hour 42 on a drive of 65,592 hours ran 14 hours ago, not seven years."""
+        if self.selftest_hours is None or not self.power_on_hours:
+            return None
+        return (self.power_on_hours - self.selftest_hours) % 65536
 
     @property
     def wear_attrs(self) -> list[Attr]:
@@ -372,6 +382,14 @@ def parse_report(doc: dict[str, Any]) -> SmartReport:
         r.selftest_last = str(status.get("string") or "") or None
         r.selftest_type = str(_get(table[0], "type", "string") or "") or None
         r.selftest_hours = _int(table[0].get("lifetime_hours"))
+    running = _get(doc, "ata_smart_data", "self_test", "status") or {}
+    if isinstance(running, dict) and "in progress" in str(running.get("string") or ""):
+        left = _int(running.get("remaining_percent"))
+        r.selftest_progress = max(0, min(100, 100 - left)) if left is not None else 0
+    r.long_test_minutes = _int(_get(doc, "ata_smart_data", "self_test", "polling_minutes", "extended"))
+    now_testing = _get(doc, "nvme_self_test_log", "current_self_test_operation") or {}
+    if isinstance(now_testing, dict) and _int(now_testing.get("value")):
+        r.selftest_progress = _int(_get(doc, "nvme_self_test_log", "current_self_test_completion_percent")) or 0
     for entry in _get(err, "extended", "table") or _get(err, "summary", "table") or []:
         if isinstance(entry, dict):
             r.error_entries.append(

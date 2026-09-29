@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from drivecanary.scrub import btrfs_found_errors, summarize
+from drivecanary.scrub import btrfs_found_errors, running, summarize
 
 FINISHED = """UUID:             c2d4
 Scrub started:    Sun Sep 14 03:00:00 2026
@@ -70,3 +70,13 @@ def test_zfs() -> None:
 def test_md_passes_through() -> None:
     line = "[==>.....]  resync = 12.6% (1234/9876) finish=127.5min speed=33440K/sec"
     assert summarize("md", "      " + line) == " ".join(line.split())
+
+
+def test_a_running_scrub_says_how_far() -> None:
+    assert running("btrfs", "Status:           running\nBytes scrubbed:   1.00TiB  (18.42%)\n") == "18.42%"
+    assert running("btrfs", "Status:           running\n") == ""
+    assert running("btrfs", "Status:           finished\nDuration: 1:00:00\n") is None
+    assert running("zfs", "scrub in progress since Sun Sep 14 03:00:00 2026") == ""
+    assert running("zfs", "scrub repaired 0B in 05:12:33 with 0 errors on Sun Sep 14 05:12:35 2026") is None
+    assert running("md", "[==>.....]  resync = 12.6% (1234/9876) finish=127.5min") == "12.6%"
+    assert running("md", None) is None and running("zfs", "none requested") is None

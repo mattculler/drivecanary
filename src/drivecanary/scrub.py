@@ -101,6 +101,24 @@ def summarize_zfs(text: str) -> str:
     return line[:90]
 
 
+def running(kind: str, text: str | None) -> str | None:
+    """'18.42%' (or '' when it does not say how far) while a scrub, resync or check is under way; else None."""
+    if not text:
+        return None
+    if kind == "btrfs":
+        if not re.search(r"^\s*Status:\s*running", text, re.M) and not _OLD_BTRFS_RUNNING.search(text):
+            return None
+        done = re.search(r"\(([\d.]+%)\)", text)
+        return done.group(1) if done else ""
+    if kind == "zfs":
+        if not re.search(r"(scrub|resilver) in progress", text):
+            return None
+        done = re.search(r"([\d.]+%) done", text)
+        return done.group(1) if done else ""
+    done = re.search(r"(?:resync|recovery|reshape|check)\s*=\s*([\d.]+%)", text)
+    return done.group(1) if done else None
+
+
 def summarize(kind: str, text: str | None) -> str:
     if not text:
         return ""

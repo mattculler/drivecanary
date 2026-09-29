@@ -21,7 +21,7 @@
     {% if latest.exit_status is not none %} · smartctl exit {{ latest.exit_status }}{% endif %}
     {% if latest.endurance_used is not none %} · {{ latest.endurance_used }}% of rated endurance used{% endif %}
     {% if latest.ata_error_count is not none %} · {{ latest.ata_error_count }} error log entries{% endif %}
-    {% if latest.selftest_last %} · last self-test: {% if report and report.selftest_type %}{{ report.selftest_type }}, {% endif %}{{ latest.selftest_last }}{% if report and report.selftest_hours is not none and report.power_on_hours %}, {{ '{:,}'.format([report.power_on_hours - report.selftest_hours, 0]|max) }} power-on hours ago{% endif %}{% endif %}
+    {% if latest.selftest_last %} · last self-test: {% if report and report.selftest_type %}{{ report.selftest_type }}, {% endif %}{{ latest.selftest_last }}{% if report and report.selftest_age_hours is not none %}, {{ '{:,}'.format(report.selftest_age_hours) }} power-on hours ago{% endif %}{% endif %}
     {% if latest.nvme_percentage_used is not none %} · {{ latest.nvme_percentage_used }}% used, spare {{ latest.nvme_available_spare }}% (threshold {{ latest.nvme_spare_threshold }}%), {{ latest.nvme_media_errors }} media errors, {{ latest.nvme_unsafe_shutdowns }} unsafe shutdowns{% endif %}
     {% if latest.scsi_grown_defects is not none %} · {{ latest.scsi_grown_defects }} grown defects{% endif %}
     {% if latest.messages %}<div class="why">smartctl: {{ latest.messages }}</div>{% endif %}

@@ -149,6 +149,28 @@ def test_error_log_entries_say_whose_fault() -> None:
     assert r.recent_errors(720) == {} and r.recent_errors(10_000) == {"media": 5}, "they are 3,600 hours old"
 
 
+def test_a_self_test_that_is_running() -> None:
+    r = parse_report(load_json("smart-ata.json"))  # "in progress, 10% remaining"
+    assert r.selftest_progress == 90 and r.long_test_minutes == 1479
+    done = parse_report(load_json("smart-ata-full.json"))
+    assert done.selftest_progress is None and done.long_test_minutes == 85
+    nvme = load_json("smart-nvme.json")
+    assert parse_report(nvme).selftest_progress is None
+    nvme["nvme_self_test_log"] = {
+        "current_self_test_operation": {"value": 1},
+        "current_self_test_completion_percent": 37,
+    }
+    assert parse_report(nvme).selftest_progress == 37
+
+
+def test_the_self_test_log_counts_hours_in_sixteen_bits() -> None:
+    r = parse_report(load_json("smart-fail2.json"))
+    assert (r.power_on_hours, r.selftest_hours) == (65592, 42)
+    assert r.selftest_age_hours == 14, "hour 42 came round again at 65,578: not seven years ago"
+    assert parse_report(load_json("smart-ata-full.json")).selftest_age_hours == 134
+    assert parse_report(load_json("smart-nvme.json")).selftest_age_hours is None
+
+
 def test_standby_detection() -> None:
     doc = {"smartctl": {"exit_status": 3, "messages": [{"string": "Device is in STANDBY mode, exit(3)"}]}}
     r = parse_report(doc)
