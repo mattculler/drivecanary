@@ -1,13 +1,15 @@
 {% extends "base.html" %}
 {% block title %}{{ host.name }} · drivecanary{% endblock %}
 {% block content %}
-<h1>{{ host.name }} <span class="muted">{{ host.address }}{% if host.ssh_port != 22 %}:{{ host.ssh_port }}{% endif %}</span></h1>
+{# the address only where it says something the name does not #}
+<h1>{{ host.name }}{% if host.address != host.name or host.ssh_port != 22 %} <span class="muted">{{ host.address }}{% if host.ssh_port != 22 %}:{{ host.ssh_port }}{% endif %}</span>{% endif %}</h1>
 <dl class="kv">
   <dt>state</dt><dd>{{ host.state }}{% if host.unreachable_since %} (unreachable since {{ host.unreachable_since|dt }}){% endif %}</dd>
   <dt>transport</dt><dd>{% if host.transport == "push" %}push: its agent reports to the hub{% else %}pull: ssh as {{ host.ssh_user or cfg.collect.ssh_user }}{% endif %}</dd>
   <dt>time zone</dt><dd>{{ host.tz or '(from the gate)' }}</dd>
   <dt>os</dt><dd>{{ host.os_release or '' }}</dd>
-  <dt>smartctl</dt><dd>{{ host.smartctl_version or '' }} <span class="muted">gate v{{ host.gate_version or '?' }}, probe v{{ host.probe_version or '?' }}</span></dd>
+  <dt>smartctl</dt><dd>{{ host.smartctl_version or '' }}</dd>
+  <dt>drivecanary</dt><dd>{% for name, v in installed.items() if v is not none %}{{ name }} v{{ v }}{% if not loop.last %}, {% endif %}{% else %}<span class="muted">not heard from yet</span>{% endfor %}{% if behind %} <span class="problem">behind: {% for name in behind %}{{ name }} is v{{ current[name] }} now{% if not loop.last %}, {% endif %}{% endfor %}. Run install-host.sh for this host again.</span>{% endif %}</dd>
   <dt>machine-id</dt><dd class="muted">{{ host.machine_id or '' }}</dd>
   <dt>last success</dt><dd>{{ host.last_success_at|ago(now) }} <span class="muted">{{ host.last_success_at|dt }}</span></dd>
   {% if host.last_attempt_class %}<dt>last failure</dt><dd class="problem">{{ host.last_attempt_class }}: {{ host.last_attempt_reason }}</dd>

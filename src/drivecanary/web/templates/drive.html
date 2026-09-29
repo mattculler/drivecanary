@@ -12,7 +12,7 @@
   <dt>serial</dt><dd>{{ drive.serial or drive.serial_key }}{% if drive.wwn %} <span class="muted">wwn {{ drive.wwn }}</span>{% endif %}</dd>
   <dt>size</dt><dd>{{ drive.capacity_bytes|bytes }} {% if drive.rotation_rate %}<span class="muted">{{ drive.rotation_rate }} rpm</span>{% elif drive.rotation_rate == 0 %}<span class="muted">solid state</span>{% endif %}{% if drive.form_factor %} <span class="muted">{{ drive.form_factor }}</span>{% endif %}</dd>
   <dt>interface</dt><dd>{{ drive.protocol or '' }}{% if drive.device_type %} <span class="muted">-d {{ drive.device_type }}</span>{% endif %}{% if drive.firmware %} · firmware {{ drive.firmware }}{% endif %}</dd>
-  <dt>where</dt><dd>{% for s in sightings %}<a class="plain" href="/host/{{ s.host.id }}">{{ s.host.name }}</a> {{ s.dev_name }}{% if not s.current %} <span class="muted">(until {{ s.last_seen_at|dt }})</span>{% else %} <span class="muted">since {{ s.first_seen_at|dt }}</span>{% endif %}{% if not loop.last %}; {% endif %}{% else %}<span class="muted">never seen by the collector (history from attrlog)</span>{% endfor %}</dd>
+  <dt>where</dt><dd>{% for s in sightings %}<a class="plain" href="/host/{{ s.host.name|urlencode }}">{{ s.host.name }}</a> {{ s.dev_name }}{% if not s.current %} <span class="muted">(until {{ s.last_seen_at|dt }})</span>{% else %} <span class="muted">since {{ s.first_seen_at|dt }}</span>{% endif %}{% if not loop.last %}; {% endif %}{% else %}<span class="muted">never seen by the collector (history from attrlog)</span>{% endfor %}</dd>
   <dt>history</dt><dd>{{ '{:,}'.format(span[2]) }} readings{% if span[0] %}, {{ span[0]|dt }} → {{ span[1]|dt }}{% endif %}</dd>
   {% if latest %}
   <dt>latest</dt><dd>

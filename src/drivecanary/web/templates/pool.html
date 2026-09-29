@@ -1,9 +1,45 @@
 {% extends "base.html" %}
 {% block title %}{{ pool.name }} · drivecanary{% endblock %}
 {% block content %}
-<h1><span class="kind">{{ pool.kind }}</span>{{ pool.name }} <span class="muted">on <a class="plain" href="/host/{{ host.id }}">{{ host.name }}</a></span></h1>
+<h1><span class="kind">{{ pool.kind }}</span>{{ pool.name }} <span class="muted">on <a class="plain" href="/host/{{ host.name|urlencode }}">{{ host.name }}</a></span></h1>
 {% if latest %}
 <section class="summary"><span class="badge big v-{{ latest.verdict }}">{{ latest.verdict }}</span><span>{{ latest.health or '' }}</span><span class="why">{{ (latest.reasons or '').replace('\n', '; ') }}</span><span class="muted">read {{ latest.collected_at|ago(now) }}</span></section>
+<h2>Disks in this pool</h2>
+<div class="tbl"><table>
+<tr><th>status</th><th>as the pool names it</th><th>drive</th><th>serial</th><th class="num">size</th><th>in the pool</th><th class="num">read</th><th class="num">write</th><th class="num">cksum</th></tr>
+{% for m in members %}{% set d = rows.get(m.drive.id) if m.drive else none %}
+<tr class="r-{{ d.verdict.value if d else 'unknown' }}">
+  <td>{% if d %}{% with v=d.verdict %}{% include "_badge.html" %}{% endwith %}{% endif %}</td>
+  <td>{{ m.name }}</td>
+  {% if m.drive %}
+  <td><span class="kind">{{ m.drive.kind }}</span><a href="/drive/{{ m.drive.id }}">{{ m.drive.label }}</a> <span class="muted" title="found by: {{ m.how }}">{{ m.dev_name }}</span></td>
+  <td class="muted">{{ m.drive.serial or m.drive.serial_key }}</td>
+  <td class="num">{{ m.drive.capacity_bytes|bytes }}</td>
+  {% else %}
+  <td colspan="3" class="muted">not matched to a drive this host reports</td>
+  {% endif %}
+  <td>{{ m.state or '' }}</td>
+  <td class="num">{{ m.read_errors if m.read_errors is not none else '' }}</td>
+  <td class="num">{{ m.write_errors if m.write_errors is not none else '' }}</td>
+  <td class="num">{{ m.cksum_errors if m.cksum_errors is not none else '' }}</td>
+</tr>
+{% else %}<tr><td colspan="9" class="muted">the pool's status names no devices</td></tr>{% endfor %}
+</table></div>
+
+<h2>Other disks on {{ host.name }}</h2>
+<div class="tbl"><table>
+<tr><th>status</th><th>dev</th><th>drive</th><th>serial</th><th class="num">size</th></tr>
+{% for s in others %}{% set d = rows.get(s.drive.id) %}
+<tr class="r-{{ d.verdict.value if d else 'unknown' }}">
+  <td>{% if d %}{% with v=d.verdict %}{% include "_badge.html" %}{% endwith %}{% endif %}</td>
+  <td>{{ s.dev_name }}</td>
+  <td><span class="kind">{{ s.drive.kind }}</span><a href="/drive/{{ s.drive.id }}">{{ s.drive.label }}</a></td>
+  <td class="muted">{{ s.drive.serial or s.drive.serial_key }}</td>
+  <td class="num">{{ s.drive.capacity_bytes|bytes }}</td>
+</tr>
+{% else %}<tr><td colspan="5" class="muted">none: every disk this host reports is in this pool</td></tr>{% endfor %}
+</table></div>
+
 {% if latest.scrub %}
 <h2>Scrub <span class="muted">{{ latest.scrub|scrub(pool.kind) }}</span></h2>
 <pre>{{ latest.scrub }}</pre>

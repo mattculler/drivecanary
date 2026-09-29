@@ -104,6 +104,22 @@ def metrics_for(drive: Drive, attr_ids: set[int]) -> list[dict[str, str]]:
     return out
 
 
+HOST_SCRIPTS = Path(__file__).resolve().parents[3] / "deploy" / "host"
+
+
+def script_versions() -> dict[str, int]:
+    """The versions of the host scripts in this checkout: what a host would have after install-host.sh."""
+    found: dict[str, int] = {}
+    for name in ("gate", "probe", "agent"):
+        try:
+            m = re.search(r"^VERSION=(\d+)$", (HOST_SCRIPTS / name).read_text(), re.M)
+        except OSError:
+            continue
+        if m:
+            found[name] = int(m.group(1))
+    return found
+
+
 def create_app(config: Config | None = None) -> FastAPI:
     cfg = config or load_config()
     engine = make_engine(cfg.db_path, echo=cfg.db.echo_sql)
@@ -175,9 +191,12 @@ def create_app(config: Config | None = None) -> FastAPI:
         hub_ip = asked if is_lan_ip else None
         return page(request, "hosts.html", ov=ov, hub_key=hub_key, hub_ip=hub_ip)
 
-    @app.get("/host/{host_id}", response_class=HTMLResponse)
-    def host_page(request: Request, db: Db, host_id: int) -> HTMLResponse:
-        host = db.get(Host, host_id)
+    @app.get("/host/{ref}", response_class=HTMLResponse)
+    def host_page(request: Request, db: Db, ref: str) -> HTMLResponse:
+        # by name, so that a link can be written from elsewhere without knowing a number; a number still works
+        host = db.scalar(select(Host).where(Host.name == ref))
+        if host is None and ref.isdigit():
+            host = db.get(Host, int(ref))
         if host is None:
             raise HTTPException(404, "no such host")
         attempts = list(
@@ -192,7 +211,21 @@ def create_app(config: Config | None = None) -> FastAPI:
         drives = [d for d in ov.drives if d.host is not None and d.host.id == host.id]
         pools = [p for p in ov.pools if p.host.id == host.id]
         cursors = list(db.scalars(select(AttrlogCursor).where(AttrlogCursor.host_id == host.id)))
-        return page(request, "host.html", host=host, attempts=attempts, drives=drives, pools=pools, cursors=cursors)
+        installed = {"gate": host.gate_version, "probe": host.probe_version, "agent": host.agent_version}
+        current = script_versions()
+        behind = sorted(k for k, v in installed.items() if v is not None and current.get(k, 0) > v)
+        return page(
+            request,
+            "host.html",
+            host=host,
+            attempts=attempts,
+            drives=drives,
+            pools=pools,
+            cursors=cursors,
+            installed=installed,
+            current=current,
+            behind=behind,
+        )
 
     @app.get("/runs", response_class=HTMLResponse)
     def runs_page(request: Request, db: Db) -> HTMLResponse:

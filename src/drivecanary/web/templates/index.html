@@ -11,7 +11,7 @@
     <span class="muted">no hosts yet</span>
   {% endif %}
   {% for h in ov.hosts if h.host.state in ('unreachable', 'broken') %}
-    <span class="problem"><a class="plain" href="/host/{{ h.host.id }}">{{ h.host.name }}</a> {{ h.host.state }}{% if h.host.unreachable_since %} since {{ h.host.unreachable_since|ago(now) }}{% endif %}</span>
+    <span class="problem"><a class="plain" href="/host/{{ h.host.name|urlencode }}">{{ h.host.name }}</a> {{ h.host.state }}{% if h.host.unreachable_since %} since {{ h.host.unreachable_since|ago(now) }}{% endif %}</span>
   {% endfor %}
 </section>
 
@@ -32,7 +32,7 @@
 {% set r = d.latest %}
 <tr class="r-{{ d.verdict.value }}">
   <td>{% with v=d.verdict %}{% include "_badge.html" %}{% endwith %}</td>
-  <td>{% if d.host %}<a class="plain" href="/host/{{ d.host.id }}">{{ d.host.name }}</a>{% if d.dev_name %} <span class="muted">{{ d.dev_name }}</span>{% endif %}{% else %}<span class="muted">?</span>{% endif %}</td>
+  <td>{% if d.host %}<a class="plain" href="/host/{{ d.host.name|urlencode }}">{{ d.host.name }}</a>{% if d.dev_name %} <span class="muted">{{ d.dev_name }}</span>{% endif %}{% else %}<span class="muted">?</span>{% endif %}</td>
   <td><span class="kind">{{ d.drive.kind }}</span><a href="/drive/{{ d.drive.id }}">{{ d.drive.label }}</a></td>
   <td class="muted">{{ d.drive.serial or d.drive.serial_key }}</td>
   <td class="num">{{ d.drive.capacity_bytes|bytes }}</td>
@@ -55,7 +55,7 @@
 {% for p in ov.pools %}{% set s = p.latest %}
 <tr class="r-{{ p.verdict.value }}">
   <td>{% with v=p.verdict %}{% include "_badge.html" %}{% endwith %}</td>
-  <td><a class="plain" href="/host/{{ p.host.id }}">{{ p.host.name }}</a></td>
+  <td><a class="plain" href="/host/{{ p.host.name|urlencode }}">{{ p.host.name }}</a></td>
   <td><span class="kind">{{ p.pool.kind }}</span></td>
   <td><a href="/pool/{{ p.pool.id }}">{{ p.pool.name }}</a></td>
   <td>{{ s.health if s else '' }}</td>
