@@ -23,13 +23,14 @@ What runs when (`systemctl list-timers 'drivecanary-*'`):
 | unit | schedule | does |
 |---|---|---|
 | `drivecanary-web.service` | always | the page on `[web].bind:port` |
+| `drivecanary-ingest.service` | always | where push agents deliver, on `[ingest].bind:port` (8081) |
 | `drivecanary-collect.timer` | hourly | ssh to every due host, ingest, judge; a host that failed is that host's row, not a failed unit |
 | `drivecanary-backup.timer` | 02:30 | one `tar.gz` a night in `/var/lib/drivecanary/backups` (keeps 14): a snapshot of the database, `config.toml`, the host list, a manifest |
 
 Logs are JSON lines in journald: `journalctl -u 'drivecanary-*' -f`. The CLI from any admin shell:
 `drivecanary status`, `drivecanary host list`, `drivecanary collect --host atlas` (passwordless with
 `deploy/sudoers.example`). Update: `drivecanary update` (pull, stop the jobs, sync, migrate, restart web,
-start the timers), or `make update` from the checkout.
+start the timers), or `make update` from the checkout. It says which commits it brought.
 
 ## Adding a host
 
@@ -121,9 +122,43 @@ Copies of `/var/lib/smartmontools/attrlog.*.csv` from a host import with
 idempotent, and the collector's own pulls of the same files do not duplicate a line. NVMe attrlogs exist only
 from smartmontools 7.5; ATA and SCSI logs are read, NVMe ones are not yet.
 
-## Later: a push agent
+## Push hosts
 
-For a host that is only up on demand (wake-on-LAN), or one that should not hold an inbound key (the
-hypervisor the hub runs on), the same probe can run from a timer on the host and POST its envelope to the
-hub. The database already records what that needs; the hub-side endpoint and the agent are not written.
-`docs/transport-design-2026-09-28.md` §2 is the design.
+Some hosts should report to the hub instead of being reached by it: one that is only up on demand (a NAS woken
+over the LAN), and the hypervisor this VM runs on, which should accept no key held by one of its own guests.
+On those an agent runs from a systemd timer, hourly and two minutes after boot, and POSTs to the hub's ingest
+listener (`drivecanary-ingest.service`, port 8081) with the host's token. It sends exactly what a pull would
+have fetched, and the hub stores it the same way.
+
+```bash
+# 1. hub: the row. It prints the host's token, once, and the command for step 2.
+drivecanary host add pve --transport push
+
+# 2. workstation: the drivecanary user, the probe, the agent with its token, and its timer
+deploy/host/install-host.sh pve --push --hub-url http://10.100.100.NN:8081 --token <from step 1>
+```
+
+Step 2 ends by sending the first report and showing the hub's answer. After that `drivecanary status` and the
+host's page show it like any other host, with `push` in the "how" column.
+
+What is on the host: the same probe, gate and sudoers line as for a pull; `/usr/local/lib/drivecanary/agent`;
+`/etc/drivecanary/agent.conf` (the hub's URL) and `/etc/drivecanary/agent.token` (mode 0600); the spool and
+the agent's state in `/var/lib/drivecanary-agent`. No `authorized_keys`: nothing on a push host accepts a
+connection from the hub.
+
+When the hub is away the agent keeps what it collected (the newest 24 reports, 256 MB at most) and delivers
+it, oldest first, when the hub is back. Its failures in between are told to the hub with the first delivery
+that gets through, so the host's page says why there was a gap. On the host: `journalctl -u drivecanary-agent`.
+
+A push host that has gone quiet shows STALE after `[collect].stale_after_hours`. The hub cannot say why (it
+never reaches out to a push host); the host's journal can.
+
+| | |
+|---|---|
+| a lost or leaked token | `drivecanary host token pve`, then step 2 again with the new one |
+| pull host to push | `drivecanary host set atlas --transport push`, then `install-host.sh atlas --push ...` (it removes the hub's key) |
+| push host to pull | `drivecanary host set pve --transport pull`, then `install-host.sh pve --hub-ip ... --hub-key ...` (it stops the agent), then `drivecanary host keyscan pve` |
+
+The token is the only thing between the LAN and that host's row: anyone holding it can post readings as that
+host, and nothing else. The hub keeps only its hash. The listener reads no more than `[ingest].max_body_mb`
+and inflates no further than `[collect].max_output_mb`.

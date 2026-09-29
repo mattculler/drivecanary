@@ -15,6 +15,8 @@ before changing how collection works.
   sudoers line, and the probe runs `smartctl -j -x` per device, `zpool`/`btrfs`/`mdadm` where present, and
   hands back everything it saw plus the tail of smartd's attribute logs since the hub last read them.
   `deploy/host/install-host.sh HOST` sets all of that up from your workstation.
+- **Push hosts** are the exception: a host that is only up on demand, or the hypervisor the hub runs on,
+  runs `deploy/host/agent` from a timer instead and reports to the hub with a token. Same probe, same data.
 - **The hub** (`drivecanary collect`, from a systemd timer) parses what came back (`smartctl -j` JSON: no text
   scraping), judges every drive (`drivecanary/status.py`: SMART PASSED is not enough; the exit bits,
   Backblaze's five counters and the NVMe health log are), and records for every host what happened, so a
@@ -61,10 +63,12 @@ identity smartctl knows (model family, firmware, WWN, capacity), the pools, and 
 - `src/drivecanary/smart.py` — `smartctl -j` into a flat report; `status.py` — the OK/WARN/FAIL rules.
 - `src/drivecanary/envelope.py` — the byte stream the gate sends; `ingest.py` — that stream into rows;
   `collect.py` — the ssh pull, parallel per host, one transaction per host.
+- `src/drivecanary/push.py` — what a push agent delivers, stored the same way; `ingest_api.py` — the
+  listener it delivers to, a service of its own so the page stays read-only.
 - `src/drivecanary/attrlog.py` — smartd attribute logs, whole files or chunks past a cursor.
 - `src/drivecanary/queries.py` — what the page and `drivecanary status` show; `web/` — the page.
 - `deploy/` — the VM install (`install.sh`, `update.sh`, `backup.sh`, units) and `deploy/host/` — what goes
-  on each monitored host (`probe`, `gate`, `sudoers`, `install-host.sh`). See `deploy/README.md`.
+  on each monitored host (`probe`, `gate`, `agent`, `sudoers`, `install-host.sh`). See `deploy/README.md`.
 - `data/attrlogs/` — attrlog CSVs pulled by hand from hosts (atlas's, in their own commit);
   `data/legacy-smartctl-text/` — two 2017 `smartctl -a` captures from storage1 and storage2, kept as history.
 - `tests/fixtures/smartctl/` — real `smartctl -j` captures (from Scrutiny's test data, MIT) covering ATA,
@@ -72,7 +76,5 @@ identity smartctl knows (model family, firmware, WWN, capacity), the pools, and 
 
 ## Not yet
 
-A push agent (the same probe, run by a timer on the host and POSTed to the hub) for hosts that are only up
-on demand or that should not hold an inbound key: the schema records what it needs (`payload_id`, the host's
-own clock beside the hub's, machine-id), and `docs/transport-design-2026-09-28.md` §2 says how. Alerting is
-smartd's job on each host (`-M exec`), not the hub's.
+NVMe attribute logs (smartd writes them only from smartmontools 7.5), an importer for the two 2017 text
+captures, and hosts that are not Linux. Alerting is smartd's job on each host (`-M exec`), not the hub's.
