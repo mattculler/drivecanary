@@ -22,7 +22,7 @@ from drivecanary.models import (
     PoolStatus,
     SmartRun,
 )
-from tests.conftest import ProbeEnv
+from tests.conftest import HOST_DIR, ProbeEnv
 
 
 def test_gate_ping_and_refusals(probe_env: ProbeEnv) -> None:
@@ -134,23 +134,24 @@ def test_a_host_without_a_zone_uses_what_it_reports_then_the_default(
 def test_a_second_probe_is_turned_away_while_one_runs(probe_env: ProbeEnv) -> None:
     import os
     import subprocess
+    import time
 
-    (probe_env.shims / "smartctl").write_text("#!/bin/sh\nsleep 3\necho '{}'\n")
+    slow = '#!/bin/sh\ncase "$1" in --version) sleep 2 ;; esac\necho "{}"\n'
+    (probe_env.shims / "smartctl").write_text(slow)
     env = dict(os.environ, PATH=f"{probe_env.shims}:{os.environ['PATH']}")
-    first = subprocess.Popen(
-        ["sh", str(probe_env.probe)], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+    first = subprocess.Popen(["sh", str(probe_env.probe)], env=env, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    time.sleep(0.7)
+    second = subprocess.run(["sh", str(probe_env.probe)], env=env, capture_output=True, text=True, check=False)
+    out, _ = first.communicate(timeout=60)
+    assert second.returncode == 75 and "another probe is still running" in second.stderr and second.stdout == ""
+    assert first.returncode == 0 and out.rstrip().splitlines()[-1].startswith(b"PROBE-END"), (
+        "the first was not disturbed"
     )
-    try:
-        import time
-
-        time.sleep(1)
-        second = subprocess.run(["sh", str(probe_env.probe)], env=env, capture_output=True, text=True, check=False)
-        assert second.returncode == 75 and "another probe is still running" in second.stderr
-    finally:
-        first.kill()
-        first.wait()
-    text = probe_env.probe.read_text()
-    assert "LOCKDIR=$TMP" not in text, "a lock in the run's own temp directory is never contended"
+    third = subprocess.run(["sh", str(probe_env.probe)], env=env, capture_output=True, text=True, check=False)
+    assert third.returncode == 0, "and the lock is free again afterwards"
+    assert "LOCKDIR=$TMP" not in (HOST_DIR / "probe").read_text(), (
+        "a lock in the run's own directory is never contended"
+    )
 
 
 def test_devices_conf_skips_and_adds(probe_env: ProbeEnv) -> None:

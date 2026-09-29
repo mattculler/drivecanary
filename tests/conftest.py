@@ -197,6 +197,8 @@ def probe_env(tmp_path: Path) -> ProbeEnv:
     text = (HOST_DIR / "probe").read_text()
     text = text.replace("PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", path_line, 1)
     text = text.replace("DEVICES_CONF=/etc/drivecanary/devices.conf", f"DEVICES_CONF={devices_conf}", 1)
+    # a lock of this test's own: the real one is system-wide, and one test's probe must not turn away another's
+    text = text.replace("LOCKDIR=/run/lock", f"LOCKDIR={tmp_path}", 1)
     probe.write_text(text)
     text = (HOST_DIR / "gate").read_text()
     text = text.replace("PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", path_line, 1)
