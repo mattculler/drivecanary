@@ -17,7 +17,7 @@
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 LC_ALL=C
 export PATH LC_ALL
-VERSION=1
+VERSION=2
 STANDBY_EXIT=3
 DEVICES_CONF=/etc/drivecanary/devices.conf
 LOCKDIR=/run/lock
@@ -115,7 +115,8 @@ if [ "$OS" = FreeBSD ]; then
   } > "$TMP/osrel"
   frame os.release 5 cat "$TMP/osrel"
 else
-  frame lsblk 30 lsblk -J -b -o KNAME,TYPE,SIZE,ROTA,SERIAL,MODEL,WWN,TRAN,PKNAME,FSTYPE,MOUNTPOINT
+  # PATH: a pool names a mapped device by its path (/dev/mapper/x), the kernel by its own name (dm-0)
+  frame lsblk 30 lsblk -J -b -o KNAME,PATH,TYPE,SIZE,ROTA,SERIAL,MODEL,WWN,TRAN,PKNAME,FSTYPE,MOUNTPOINT
   frame os.release 5 cat /etc/os-release
 fi
 printf 'PROBE-END version=%s frames=%s\n' "$VERSION" "$N"

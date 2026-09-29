@@ -116,6 +116,37 @@ def test_the_hub_runs_the_ingest_listener_as_the_collector() -> None:
         assert "drivecanary-ingest.service" in (DEPLOY / name).read_text(), name
 
 
+#: each host script's VERSION, and the sha256 of the file that carries it
+RELEASED = {
+    "probe": (2, "8cccf4bdb68a723b52ac609bf54c3ca37377c8c509f5006083e5a04247180752"),
+    "gate": (2, "a0348ea47356fccd17de7bde1f5c85d0badcc85bd1fa9a497daf21d44f1bc5c9"),
+    "agent": (2, "9406824c0b16a3b76b37162ac03136657e43af5c89a8f22bcb032b05c22d12d8"),
+}
+
+
+def test_a_changed_host_script_has_a_new_version() -> None:
+    """A host's page says which version of each script it runs, and that is only worth something if a
+    changed script never keeps its number: the probe was fixed twice as v1, and a host that had the fix
+    looked the same as one that did not (2026-09-28)."""
+    import hashlib
+    import re
+
+    for name, (version, digest) in RELEASED.items():
+        text = (DEPLOY / "host" / name).read_bytes()
+        found = re.search(rb"^VERSION=(\d+)$", text, re.M)
+        assert found is not None, name
+        now = hashlib.sha256(text).hexdigest()
+        if now != digest:
+            assert int(found.group(1)) > version, (
+                f"deploy/host/{name} has changed and is still VERSION={version}: raise it, then record "
+                f'"{name}": ({version + 1}, "<the new sha256>") in RELEASED'
+            )
+            raise AssertionError(
+                f'deploy/host/{name} is a new version: record "{name}": ({int(found.group(1))}, "{now}")'
+            )
+        assert int(found.group(1)) == version, name
+
+
 def test_the_installer_knows_opnsense() -> None:
     install = (DEPLOY / "host" / "install-host.sh").read_text()
     assert "/usr/local/etc/cron.d/drivecanary" in install and "logger -t drivecanary-agent" in install

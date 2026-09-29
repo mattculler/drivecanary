@@ -27,7 +27,7 @@ from tests.conftest import HOST_DIR, ProbeEnv
 
 def test_gate_ping_and_refusals(probe_env: ProbeEnv) -> None:
     cp = probe_env.run_gate("drivecanary-ping")
-    assert cp.returncode == 0 and cp.stdout == b"DRIVECANARY-PONG gate_version=1\n"
+    assert cp.returncode == 0 and cp.stdout == b"DRIVECANARY-PONG gate_version=2\n"
     for bad in (
         "id",
         "sh",
@@ -52,7 +52,7 @@ def test_collect_envelope_ingests(probe_env: ProbeEnv, session: Session, cfg: Co
     cp = probe_env.run_gate("drivecanary-collect")
     assert cp.returncode == 0, cp.stderr
     env = parse_envelope(cp.stdout)
-    assert env.complete and env.probe_ran and env.header["gate_version"] == "1"
+    assert env.complete and env.probe_ran and env.header["gate_version"] == "2"
     names = [f.name for f in env.frames]
     assert "smartctl.scan" in names and "smartctl.dev:/dev/sda:sat" in names and "smartctl.dev:/dev/nvme0:nvme" in names
     assert "smartctl.dev:/dev/sr0:scsi" not in names, "a device with open_error is left alone"
@@ -71,7 +71,7 @@ def test_collect_envelope_ingests(probe_env: ProbeEnv, session: Session, cfg: Co
     res = ingest_envelope(session, host=host, attempt=attempt, env=env, cfg=cfg)
     session.commit()
     assert res.drives == 3 and res.runs == 3 and res.pools == 3 and res.attrlog_lines == 20
-    assert host.smartctl_version == "7.4" and host.gate_version == 1 and host.probe_version == 1 and host.machine_id
+    assert host.smartctl_version == "7.4" and host.gate_version == 2 and host.probe_version == 2 and host.machine_id
 
     drives = {d.serial_key: d for d in session.scalars(select(Drive))}
     assert len(drives) == 4  # sda, sdb, nvme0 from smartctl; the attrlog drive from its file name

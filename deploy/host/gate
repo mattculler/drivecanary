@@ -12,7 +12,7 @@
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 LC_ALL=C
 export PATH LC_ALL
-VERSION=1
+VERSION=2
 PROBE=/usr/local/lib/drivecanary/probe
 ATTRLOG_DIR=/var/lib/smartmontools
 OS=$(uname -s)
