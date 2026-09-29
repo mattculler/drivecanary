@@ -26,8 +26,9 @@ EXIT_BITS = {
 #: what the probe passes as `-n standby,STANDBY_EXIT`: smartctl's default of 2 is also "open failed"
 STANDBY_EXIT = 3
 
-#: the usual names of ATA attributes, for readings that carry none (attrlog rows). smartctl's own name,
-#: from its drivedb, wins whenever a reading has one.
+#: the usual names of ATA attributes, for readings that carry none (attrlog rows). They are a guess: what an
+#: id means is the vendor's to decide (233 is a wearout indicator on Intel and gigabytes written on WD), and
+#: smartctl's drive database knows which. Its name wins whenever a reading has one.
 ATTR_LABELS: dict[int, str] = {
     1: "Raw_Read_Error_Rate",
     2: "Throughput_Performance",
@@ -146,6 +147,38 @@ class Attr:
         return display_raw(self.id, self.raw)
 
 
+#: smartctl's names for an attribute its drive database does not know
+UNKNOWN_NAMES = ("Unknown_Attribute", "Unknown_SSD_Attribute", "Unknown_HDD_Attribute")
+
+#: attributes that say how worn a solid state drive is, by the name smartctl gives them. The normalized
+#: value counts down from 100 (or 200) whatever the vendor counts in the raw.
+_WEAR_NAME = re.compile(
+    r"Wear_Level|Wearout|Wear_Out|Life_Left|Lifetime_Remain|Life_Remain|Lifetime_Left|Remaining_Life|Remain_Life"
+    r"|Percent_Life|Perc_.*Life|Life_Used|Drive_Life|SSD_Life|Endurance",
+    re.I,
+)
+
+#: what the entries of the ATA error log say went wrong, and whose fault that usually is
+ERROR_KINDS = {
+    "media": "the drive could not read or find a sector (UNC, IDNF, AMNF): the drive itself",
+    "interface": "the data was damaged on the way (ICRC): cable, backplane or controller",
+    "aborted": "the drive refused a command (ABRT): usually one it does not support, seldom a fault",
+    "other": "something else",
+}
+
+
+def error_kind(description: str) -> str:
+    """'Error: ICRC, ABRT at LBA = ...' -> interface."""
+    flags = set(re.findall(r"\b[A-Z]{2,5}\b", description.partition(" at ")[0].replace("Error:", "")))
+    if flags & {"UNC", "IDNF", "AMNF", "BBK", "MC"}:
+        return "media"
+    if "ICRC" in flags:
+        return "interface"
+    if "ABRT" in flags:
+        return "aborted"
+    return "other"
+
+
 @dataclass
 class NvmeHealth:
     critical_warning: int | None = None
@@ -197,8 +230,15 @@ class SmartReport:
     power_cycles: int | None = None
     attrs: list[Attr] = field(default_factory=list)
     ata_error_count: int | None = None
+    #: the entries the log still holds (it keeps the last few), as (power-on hour, kind)
+    error_entries: list[tuple[int | None, str]] = field(default_factory=list)
     selftest_errors: int | None = None
     selftest_last: str | None = None
+    selftest_type: str | None = None
+    selftest_hours: int | None = None  # the power-on hour it ran at
+    #: ATA device statistics, "Percentage Used Endurance Indicator": the one wear figure that means the same
+    #: on every vendor's SATA SSD, as percentage_used does on NVMe
+    endurance_used: int | None = None
     nvme: NvmeHealth | None = None
     scsi_grown_defects: int | None = None
     scsi_uncorrected_errors: int | None = None
@@ -213,6 +253,20 @@ class SmartReport:
     @property
     def exit_flags(self) -> list[str]:
         return [EXIT_BITS[b] for b in range(8) if self.bit(b)]
+
+    @property
+    def wear_attrs(self) -> list[Attr]:
+        return [a for a in self.attrs if _WEAR_NAME.search(a.name)]
+
+    def recent_errors(self, within_hours: int) -> dict[str, int]:
+        """How many of the logged errors, by kind, happened in the last `within_hours` of power-on time."""
+        found: dict[str, int] = {}
+        if self.power_on_hours is None:
+            return found
+        for hour, kind in self.error_entries:
+            if hour is not None and 0 <= self.power_on_hours - hour <= within_hours:
+                found[kind] = found.get(kind, 0) + 1
+        return found
 
     def attr(self, attr_id: int) -> Attr | None:
         for a in self.attrs:
@@ -292,10 +346,13 @@ def parse_report(doc: dict[str, Any]) -> SmartReport:
                 updated_online=bool(flags.get("updated_online")),
             )
         )
-    if r.power_on_hours is None:
+    # some drives (WD's SATA SSDs) give smartctl a power_on_time of 0 and the hours in attribute 9 all the same
+    if not r.power_on_hours:
         poh = r.attr(9)
         if poh is not None:
-            r.power_on_hours = leading_int(poh.raw_str) if poh.raw_str else poh.display
+            hours = leading_int(poh.raw_str) if poh.raw_str else poh.display
+            if hours:
+                r.power_on_hours = hours
     if r.temp_c is None:
         t = r.attr(194) or r.attr(190)
         if t is not None:
@@ -313,6 +370,18 @@ def parse_report(doc: dict[str, Any]) -> SmartReport:
     if table and isinstance(table[0], dict):
         status = table[0].get("status") or {}
         r.selftest_last = str(status.get("string") or "") or None
+        r.selftest_type = str(_get(table[0], "type", "string") or "") or None
+        r.selftest_hours = _int(table[0].get("lifetime_hours"))
+    for entry in _get(err, "extended", "table") or _get(err, "summary", "table") or []:
+        if isinstance(entry, dict):
+            r.error_entries.append(
+                (_int(entry.get("lifetime_hours")), error_kind(str(entry.get("error_description") or "")))
+            )
+    for stats_page in _get(doc, "ata_device_statistics", "pages") or []:
+        for row in (stats_page.get("table") or []) if isinstance(stats_page, dict) else []:
+            named = isinstance(row, dict) and row.get("name") == "Percentage Used Endurance Indicator"
+            if named and (row.get("flags") or {}).get("valid", True):
+                r.endurance_used = _int(row.get("value"))
 
     n = doc.get("nvme_smart_health_information_log")
     if isinstance(n, dict):
