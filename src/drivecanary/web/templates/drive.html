@@ -39,7 +39,7 @@
 
 <h2>Trends <span class="windows muted">{% for w in ('7d', '30d', '90d', '1y', 'all') %}{% if w == window %}<b>{{ w }}</b>{% else %}<a href="?window={{ w }}">{{ w }}</a>{% endif %}{% endfor %}</span></h2>
 <div class="charts">
-  {% for m in metrics %}<div class="chart" data-drive="{{ drive.id }}" data-metric="{{ m.metric }}" data-label="{{ m.label }}" data-unit="{{ m.unit }}" data-window="{{ window }}"></div>{% endfor %}
+  {% for m in metrics %}<div class="chart" data-drive="{{ drive.id }}" data-metric="{{ m.metric }}" data-label="{{ m.label }}" data-unit="{{ m.unit }}" data-window="{{ window }}" data-tz="{{ cfg.web.timezone }}"></div>{% endfor %}
 </div>
 
 {% if attrs %}
@@ -77,6 +77,7 @@ document.querySelectorAll('.chart').forEach(function (el) {
       series: [{}, { label: el.dataset.unit || el.dataset.label, stroke: '#2563eb', width: 1.5, spanGaps: true, points: { show: xs.length < 200 } }],
       axes: [{}, { size: 56 }],
       scales: { x: { time: true } },
+      tzDate: function (ts) { return uPlot.tzDate(new Date(ts * 1e3), el.dataset.tz); },
     }, [xs, ys], el);
   }).catch(function () { el.innerHTML = '<div class="empty">could not load</div>'; });
 });

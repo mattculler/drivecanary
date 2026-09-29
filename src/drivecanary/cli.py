@@ -20,6 +20,7 @@ from drivecanary import __version__
 from drivecanary.config import CONFIG_ENV, Config, ConfigError, example_config, iter_keys, load_config, render_toml
 from drivecanary.logging import configure_logging, get_logger
 from drivecanary.models import Host
+from drivecanary.timeutil import shown
 
 ROOT = Path(__file__).resolve().parents[2]
 ALEMBIC_INI = ROOT / "alembic.ini"
@@ -461,6 +462,7 @@ def host_set(
 @host_app.command("list")
 def host_list(ctx: typer.Context) -> None:
     """Every host, its state and its last attempt."""
+    zone_name = _state(ctx).config.web.timezone
     with _factory(_state(ctx))() as s:
         t = Table(title="hosts")
         for col in ("name", "address", "state", "transport", "tz", "last success", "last failure"):
@@ -473,7 +475,7 @@ def host_list(ctx: typer.Context) -> None:
                 h.state,
                 h.transport,
                 h.tz or "",
-                f"{h.last_success_at:%Y-%m-%d %H:%M}" if h.last_success_at else "never",
+                shown(h.last_success_at, zone_name) or "never",
                 fail[:100],
             )
         out.print(t)
@@ -583,11 +585,12 @@ def status_cmd(ctx: typer.Context) -> None:
     typer.echo(f"overall: {ov.verdict.value.upper()}  " + "  ".join(f"{k} {v}" for k, v in sorted(ov.counts.items())))
     if ov.last_heard:
         typer.echo(
-            f"hosts: {ov.hosts_ok} of {ov.hosts_watched} ok, the latest heard from {ov.last_heard:%Y-%m-%d %H:%M} UTC"
+            f"hosts: {ov.hosts_ok} of {ov.hosts_watched} ok, "
+            f"the latest heard from {shown(ov.last_heard, cfg.web.timezone)}"
         )
     if ov.last_run:
         typer.echo(
-            f"last pull: {ov.last_run.started_at:%Y-%m-%d %H:%M} UTC, {ov.last_run.hosts_ok} ok / "
+            f"last pull: {shown(ov.last_run.started_at, cfg.web.timezone)}, {ov.last_run.hosts_ok} ok / "
             f"{ov.last_run.hosts_failed} failed of {ov.last_run.hosts_expected} pull hosts"
         )
     t = Table(title="drives")

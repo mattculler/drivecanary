@@ -62,6 +62,9 @@ host's row and is not used again until it is.
 runs and says so when the checkout on the hub has newer ones. Nothing on the hub needs doing again after a
 reinstall: the host says what it runs with its next report.
 
+Times on the pages are in `[web].timezone` (America/New_York unless you say otherwise): EST or EDT, as the
+date has it. The database keeps UTC.
+
 A host's page is at `/host/NAME` (`http://hub:8080/host/atlas`), so another site can link to it knowing only
 the name. Its address can be changed with `drivecanary host set NAME --address atlas.domain`; for a pull host
 the pinned host key moves to the new address with it.

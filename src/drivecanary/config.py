@@ -22,6 +22,13 @@ DEFAULT_CONFIG_PATH = Path("/etc/drivecanary/config.toml")
 CONFIG_ENV = "DRIVECANARY_CONFIG"
 
 
+def _checked_zone(name: str) -> str:
+    from drivecanary.timeutil import zone
+
+    zone(name)
+    return name
+
+
 class ConfigError(Exception):
     """Raised for a missing file, TOML syntax errors, unknown keys or bad values."""
 
@@ -136,10 +143,7 @@ class CollectConfig(Section):
     @field_validator("default_tz")
     @classmethod
     def _known_zone(cls, v: str) -> str:
-        from drivecanary.timeutil import zone
-
-        zone(v)
-        return v
+        return _checked_zone(v)
 
 
 # --------------------------------------------------------------------------- verdicts
@@ -212,11 +216,23 @@ class WebConfig(Section):
 
     bind: str = Field(default="0.0.0.0", description="Address uvicorn binds to.")
     port: int = Field(default=8080, ge=1, le=65535, description="TCP port.")
+    timezone: str = Field(
+        default="America/New_York",
+        description=(
+            "The zone every time on the page and in the terminal is shown in. Times are stored in UTC whatever "
+            "this says (Olson name)."
+        ),
+    )
     series_max_points: int = Field(
         default=4000,
         ge=100,
         description="A trend series longer than this is bucket-averaged down to it before the chart gets it (points).",
     )
+
+    @field_validator("timezone")
+    @classmethod
+    def _known_zone(cls, v: str) -> str:
+        return _checked_zone(v)
 
 
 class LoggingConfig(Section):

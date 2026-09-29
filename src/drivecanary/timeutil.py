@@ -43,6 +43,14 @@ def local_to_utc(naive: datetime, tz: ZoneInfo, after: datetime | None = None) -
     return first
 
 
+def shown(dt: datetime | None, zone_name: str, *, seconds: bool = False) -> str:
+    """A stored (UTC) time as it is shown: in the zone the page is set to, with the zone's own abbreviation,
+    which says whether daylight saving was on."""
+    if dt is None:
+        return ""
+    return dt.astimezone(zone(zone_name)).strftime("%Y-%m-%d %H:%M:%S %Z" if seconds else "%Y-%m-%d %H:%M %Z")
+
+
 def hours_ago(dt: datetime | None, now: datetime | None = None) -> float | None:
     if dt is None:
         return None

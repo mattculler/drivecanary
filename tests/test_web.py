@@ -1,12 +1,18 @@
 from __future__ import annotations
 
+import re
+from datetime import UTC, datetime
+
+import pytest
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
 from drivecanary.collect import SshResult, collect, write_ssh_material
-from drivecanary.config import Config
+from drivecanary.config import Config, WebConfig
 from drivecanary.models import Drive, Host, Pool
+from drivecanary.timeutil import shown
 from drivecanary.web.app import create_app, fmt_ago, fmt_bytes
 from tests.conftest import ProbeEnv
 
@@ -178,6 +184,24 @@ def test_a_sata_ssd_gets_its_wear_charted() -> None:
         "attr:5",
         "ata_errors",
     ]
+
+
+def test_times_are_shown_in_the_zone_the_page_is_set_to(cfg: Config) -> None:
+    assert cfg.web.timezone == "America/New_York"
+    assert shown(datetime(2026, 9, 29, 2, 1, tzinfo=UTC), "America/New_York") == "2026-09-28 22:01 EDT"
+    assert shown(datetime(2026, 12, 1, 2, 1, tzinfo=UTC), "America/New_York") == "2026-11-30 21:01 EST"
+    assert shown(None, "America/New_York") == ""
+    with pytest.raises(ValidationError):
+        WebConfig(timezone="Mars/Olympus_Mons")
+
+
+def test_pages_say_est_or_edt(cfg: Config, factory: sessionmaker[Session], probe_env: ProbeEnv) -> None:
+    _populated(cfg, factory, probe_env)
+    client = TestClient(create_app(cfg))
+    for url in ("/", "/host/atlas", "/runs", "/drive/1", "/pool/1"):
+        page = client.get(url).text
+        assert " UTC" not in page, url
+        assert url == "/pool/1" or re.search(r"\d\d:\d\d E[SD]T", page), url
 
 
 def test_formatters() -> None:

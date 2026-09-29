@@ -124,6 +124,10 @@ bind = "0.0.0.0"
 # TCP port.
 port = 8080
 
+# The zone every time on the page and in the terminal is shown in. Times are
+# stored in UTC whatever this says (Olson name).
+timezone = "America/New_York"
+
 # A trend series longer than this is bucket-averaged down to it before the
 # chart gets it (points).
 series_max_points = 4000

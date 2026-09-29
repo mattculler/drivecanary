@@ -23,7 +23,7 @@ from drivecanary.models import AttrlogCursor, CollectionRun, Drive, Host, HostAt
 from drivecanary.pools import pool_members
 from drivecanary.scrub import summarize as summarize_scrub
 from drivecanary.smart import ATTR_LABELS, ERROR_KINDS, UNKNOWN_NAMES, SmartReport
-from drivecanary.timeutil import hours_ago, utcnow
+from drivecanary.timeutil import hours_ago, shown, utcnow
 
 TEMPLATES = Path(__file__).parent / "templates"
 STATIC = Path(__file__).parent / "static"
@@ -61,10 +61,6 @@ def fmt_ago(dt: datetime | None, now: datetime | None = None) -> str:
     if h < 48:
         return f"{h:.1f} h ago"
     return f"{h / 24:.0f} d ago"
-
-
-def fmt_dt(dt: datetime | None) -> str:
-    return f"{dt:%Y-%m-%d %H:%M} UTC" if dt else ""
 
 
 def fmt_hours(h: int | None) -> str:
@@ -144,7 +140,7 @@ def create_app(config: Config | None = None) -> FastAPI:
     templates = Jinja2Templates(directory=str(TEMPLATES))
     templates.env.filters["bytes"] = fmt_bytes
     templates.env.filters["ago"] = fmt_ago
-    templates.env.filters["dt"] = fmt_dt
+    templates.env.filters["dt"] = lambda dt: shown(dt, cfg.web.timezone)
     templates.env.filters["hours"] = fmt_hours
     templates.env.filters["scrub"] = lambda text, kind: summarize_scrub(kind, text)
     templates.env.globals["version"] = __version__
