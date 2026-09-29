@@ -161,7 +161,19 @@ class StatusConfig(Section):
         default=90,
         ge=1,
         le=255,
-        description="NVMe percentage_used at or above this is a WARN; 100 is the vendor's rated endurance (percent).",
+        description=(
+            "Endurance used at or above this is a WARN: NVMe's percentage_used, and a SATA SSD's Percentage Used "
+            "Endurance Indicator. 100 is the vendor's rated endurance (percent)."
+        ),
+    )
+    error_log_recent_hours: int = Field(
+        default=720,
+        ge=0,
+        description=(
+            "An entry in the ATA error log is a WARN while it is this recent, in the drive's power-on hours, and "
+            "is a read or addressing error (the drive) or a CRC error (cable, backplane, controller). An aborted "
+            "command is not counted. 0 turns it off (hours)."
+        ),
     )
     error_log_is_warn: bool = Field(
         default=False,

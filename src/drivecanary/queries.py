@@ -3,7 +3,9 @@ pool, and whether it is too old to trust."""
 
 from __future__ import annotations
 
+import json
 import math
+import zlib
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
@@ -24,7 +26,7 @@ from drivecanary.models import (
     SmartRun,
     Verdict,
 )
-from drivecanary.smart import display_raw
+from drivecanary.smart import SmartReport, display_raw, parse_report
 from drivecanary.timeutil import hours_ago, utcnow
 
 #: worst first on every list
@@ -235,6 +237,24 @@ def run_attrs(session: Session, run: SmartRun) -> list[AttrSample]:
     return list(session.scalars(select(AttrSample).where(AttrSample.run_id == run.id).order_by(AttrSample.attr_id)))
 
 
+def latest_report(session: Session, drive_id: int) -> SmartReport | None:
+    """What smartctl last said about a drive, whole: the newest reading that still has its JSON. An attrlog
+    line is a reading too, and has no names, no logs and no JSON; this looks past those."""
+    raw = session.scalar(
+        select(SmartRun.raw_json)
+        .where(SmartRun.drive_id == drive_id, SmartRun.raw_json.is_not(None))
+        .order_by(SmartRun.collected_at.desc())
+        .limit(1)
+    )
+    if raw is None:
+        return None
+    try:
+        doc = json.loads(zlib.decompress(raw))
+    except (ValueError, zlib.error):
+        return None
+    return parse_report(doc) if isinstance(doc, dict) else None
+
+
 def drive_sightings(session: Session, drive_id: int) -> list[DriveSighting]:
     return list(
         session.scalars(
@@ -263,6 +283,8 @@ RUN_METRICS: dict[str, tuple[str, str]] = {
     "nvme_err_log_entries": ("Error log entries", ""),
     "nvme_unsafe_shutdowns": ("Unsafe shutdowns", ""),
     "scsi_grown_defects": ("Grown defects", ""),
+    "endurance_used": ("Endurance used", "%"),
+    "ata_errors": ("Error log entries", ""),
 }
 _RUN_COLUMNS = {
     "temp": SmartRun.temp_c,
@@ -273,6 +295,8 @@ _RUN_COLUMNS = {
     "nvme_err_log_entries": SmartRun.nvme_err_log_entries,
     "nvme_unsafe_shutdowns": SmartRun.nvme_unsafe_shutdowns,
     "scsi_grown_defects": SmartRun.scsi_grown_defects,
+    "endurance_used": SmartRun.endurance_used,
+    "ata_errors": SmartRun.ata_error_count,
 }
 
 

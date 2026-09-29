@@ -169,6 +169,46 @@ def test_config_example_matches_the_file() -> None:
     assert r.exit_code == 0 and r.output == render_toml(example_config())
 
 
+def test_the_endurance_migration_fills_in_what_readings_already_held(tmp_path: Path) -> None:
+    import json
+    import os
+    import sqlite3
+    import zlib
+
+    from alembic.command import upgrade
+    from alembic.config import Config as AlembicConfig
+
+    from drivecanary.cli import ALEMBIC_INI
+    from tests.conftest import load_json
+    from tests.test_smart import wd_blue
+
+    db = tmp_path / "m.db"
+    os.environ["DRIVECANARY_DB"] = str(db)
+    ac = AlembicConfig(str(ALEMBIC_INI))
+    ac.attributes["skip_logging"] = True
+    upgrade(ac, "8726e88dfb7c")
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "INSERT INTO drive (id, model_key, serial_key, identity_source, first_seen_at, retired)"
+        " VALUES (1, 'm', 's', 'smartctl', 0, 0)"
+    )
+    docs = (wd_blue(), load_json("smart-ata-full.json"), None)
+    for i, doc in enumerate(docs, start=1):
+        raw = zlib.compress(json.dumps(doc).encode()) if doc else None
+        conn.execute(
+            "INSERT INTO smart_run (id, drive_id, source, collected_at, standby, power_on_hours, raw_json, verdict)"
+            " VALUES (?, 1, 'smartctl', ?, 0, ?, ?, 'ok')",
+            (i, i, 0 if i == 1 else 777, raw),
+        )
+    conn.commit()
+    conn.close()
+    upgrade(ac, "head")
+    conn = sqlite3.connect(db)
+    rows = conn.execute("SELECT id, power_on_hours, endurance_used FROM smart_run ORDER BY id").fetchall()
+    conn.close()
+    assert rows == [(1, 30700, None), (2, 777, 19), (3, 777, None)]
+
+
 def test_migration_matches_the_models(tmp_path: Path) -> None:
     """The initial migration and the models agree; a model change without a migration fails here."""
     import os

@@ -240,6 +240,7 @@ def _store_report(
         ata_error_count=report.ata_error_count,
         selftest_errors=report.selftest_errors,
         selftest_last=report.selftest_last,
+        endurance_used=report.endurance_used,
         scsi_grown_defects=report.scsi_grown_defects,
         scsi_uncorrected_errors=report.scsi_uncorrected_errors,
         messages=json.dumps(report.messages) if report.messages else None,

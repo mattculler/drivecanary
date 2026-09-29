@@ -78,7 +78,21 @@ def judge_report(r: SmartReport, cfg: StatusConfig) -> tuple[Verdict, list[str]]
     if r.bit(5):
         v.warn("an attribute was at or below its threshold in the past")
     if r.bit(7) or (r.selftest_errors or 0) > 0:
-        v.warn(f"self-test log has errors ({r.selftest_last or 'see log'})")
+        last = r.selftest_last or ""
+        # the log keeps old failures: say whether the newest test is one of them
+        if "without error" in last:
+            v.warn(f"the self-test log has failed tests; the last one: {last}")
+        else:
+            v.warn(f"the self-test log has failed tests ({last or 'see the log'})")
+    if r.endurance_used is not None and r.endurance_used >= cfg.nvme_percentage_used_warn:
+        v.warn(f"{r.endurance_used}% of rated endurance used")
+    if cfg.error_log_recent_hours:
+        recent = r.recent_errors(cfg.error_log_recent_hours)
+        within = f"in the last {cfg.error_log_recent_hours} power-on hours"
+        if recent.get("media"):
+            v.warn(f"{recent['media']} read or addressing errors logged {within}")
+        if recent.get("interface"):
+            v.warn(f"{recent['interface']} interface CRC errors logged {within}: cable, backplane or controller")
     if r.bit(6) and cfg.error_log_is_warn:
         v.warn(f"ATA error log has {r.ata_error_count if r.ata_error_count is not None else 'some'} entries")
     if r.scsi_grown_defects:

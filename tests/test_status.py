@@ -66,6 +66,44 @@ def test_nvme_critical_warning_fails() -> None:
     assert v == Verdict.FAIL and "reliability degraded" in why[0]
 
 
+def test_a_worn_sata_ssd_warns_like_a_worn_nvme() -> None:
+    doc = load_json("smart-ata-full.json")
+    assert judge_report(parse_report(doc), CFG)[0] == Verdict.OK  # 19% used
+    for page in doc["ata_device_statistics"]["pages"]:
+        for row in page["table"]:
+            if row["name"] == "Percentage Used Endurance Indicator":
+                row["value"] = 93
+    v, why = judge_report(parse_report(doc), CFG)
+    assert v == Verdict.WARN and "93% of rated endurance used" in why
+
+
+def test_errors_in_the_log_warn_while_they_are_recent() -> None:
+    doc = load_json("smart-ata.json")
+    hours = doc["power_on_time"]["hours"]
+
+    def entry(ago: int, what: str) -> dict:  # type: ignore[type-arg]
+        return {"error_number": 1, "lifetime_hours": hours - ago, "error_description": what}
+
+    doc["ata_smart_error_log"] = {
+        "summary": {
+            "count": 4,
+            "table": [
+                entry(10, "Error: ICRC, ABRT at LBA = 0x1"),
+                entry(20, "Error: ABRT"),
+                entry(30, "Error: UNC at LBA = 0x2"),
+                entry(5000, "Error: UNC at LBA = 0x3"),
+            ],
+        }
+    }
+    v, why = judge_report(parse_report(doc), CFG)
+    assert v == Verdict.WARN
+    assert "1 read or addressing errors logged in the last 720 power-on hours" in why
+    assert "1 interface CRC errors logged in the last 720 power-on hours: cable, backplane or controller" in why
+    assert len(why) == 2, "the aborted command and the old error say nothing about today"
+    quiet = StatusConfig(error_log_recent_hours=0)
+    assert judge_report(parse_report(doc), quiet)[0] == Verdict.OK
+
+
 def test_judge_attrs_for_attrlog_lines() -> None:
     assert judge_attrs({5: 0, 197: 0, 194: 98784247840}, 32, CFG) == (Verdict.OK, [])
     v, why = judge_attrs({5: 12, 197: 0}, 30, CFG)

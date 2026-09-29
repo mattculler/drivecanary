@@ -259,6 +259,7 @@ class SmartRun(Base):
     nvme_unsafe_shutdowns: Mapped[int | None] = mapped_column(BigInteger)
     nvme_data_units_written: Mapped[int | None] = mapped_column(BigInteger)
     nvme_data_units_read: Mapped[int | None] = mapped_column(BigInteger)
+    endurance_used: Mapped[int | None] = mapped_column(Integer)  # SATA SSD: percent of rated endurance
     scsi_grown_defects: Mapped[int | None] = mapped_column(Integer)
     scsi_uncorrected_errors: Mapped[int | None] = mapped_column(Integer)
     messages: Mapped[str | None] = mapped_column(Text)  # JSON list of smartctl's messages

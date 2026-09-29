@@ -83,9 +83,16 @@ ata_warn_attributes = [5, 187, 188, 197, 198]
 # A drive at or above this temperature is a WARN (degrees C).
 temp_warn_c = 55
 
-# NVMe percentage_used at or above this is a WARN; 100 is the vendor's rated
+# Endurance used at or above this is a WARN: NVMe's percentage_used, and a
+# SATA SSD's Percentage Used Endurance Indicator. 100 is the vendor's rated
 # endurance (percent).
 nvme_percentage_used_warn = 90
+
+# An entry in the ATA error log is a WARN while it is this recent, in the
+# drive's power-on hours, and is a read or addressing error (the drive) or a
+# CRC error (cable, backplane, controller). An aborted command is not counted.
+# 0 turns it off (hours).
+error_log_recent_hours = 720
 
 # Whether an ATA error log with any entry (smartctl exit bit 6) is a WARN. Off
 # by default: old drives carry historic entries forever, and the count is on
