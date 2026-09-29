@@ -156,6 +156,21 @@ class ProbeEnv:
     shims: Path
     attrlog_dir: Path
     devices_conf: Path
+    agent: Path
+    agent_conf: Path
+    agent_token: Path
+    agent_state: Path
+
+    def run_agent(self, hub_url: str, token: str) -> subprocess.CompletedProcess[str]:
+        """The real agent, as its timer would run it, against a hub at hub_url."""
+        self.agent_conf.write_text(f"HUB_URL={hub_url}\n")
+        self.agent_token.write_text(f"Authorization: Bearer {token}\n")
+        self.agent_state.mkdir(exist_ok=True)
+        env = dict(os.environ, STATE_DIRECTORY=str(self.agent_state), PATH=f"{self.shims}:{os.environ['PATH']}")
+        env.pop("SSH_ORIGINAL_COMMAND", None)
+        return subprocess.run(
+            ["sh", str(self.agent)], env=env, capture_output=True, text=True, timeout=120, check=False
+        )
 
     def run_gate(self, command: str) -> subprocess.CompletedProcess[bytes]:
         env = dict(os.environ, SSH_ORIGINAL_COMMAND=command, PATH=f"{self.shims}:{os.environ['PATH']}")
@@ -188,7 +203,14 @@ def probe_env(tmp_path: Path) -> ProbeEnv:
     text = text.replace("PROBE=/usr/local/lib/drivecanary/probe", f"PROBE={probe}", 1)
     text = text.replace("ATTRLOG_DIR=/var/lib/smartmontools", f"ATTRLOG_DIR={attrlog_dir}", 1)
     gate.write_text(text)
-    for script in (probe, gate):  # the gate runs the probe directly, as sudo would
+    agent = tmp_path / "agent"
+    text = (HOST_DIR / "agent").read_text()
+    text = text.replace("PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", path_line, 1)
+    text = text.replace("GATE=/usr/local/lib/drivecanary/gate", f"GATE={gate}", 1)
+    text = text.replace("CONF=/etc/drivecanary/agent.conf", f"CONF={tmp_path}/agent.conf", 1)
+    text = text.replace("TOKEN=/etc/drivecanary/agent.token", f"TOKEN={tmp_path}/agent.token", 1)
+    agent.write_text(text)
+    for script in (probe, gate, agent):  # the gate runs the probe directly, as sudo would
         script.chmod(script.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
     _shim(shims / "sudo", 'while [ "$1" = -n ]; do shift; done\nexec "$@"\n')
     _shim(
@@ -233,4 +255,14 @@ exit 1
     )
     _shim(shims / "lsblk", 'echo \'{"blockdevices": [{"kname": "sda", "type": "disk"}]}\'\n')
     _shim(shims / "mdadm", 'echo "MD_LEVEL=raid1"\n')
-    return ProbeEnv(gate=gate, probe=probe, shims=shims, attrlog_dir=attrlog_dir, devices_conf=devices_conf)
+    return ProbeEnv(
+        gate=gate,
+        probe=probe,
+        shims=shims,
+        attrlog_dir=attrlog_dir,
+        devices_conf=devices_conf,
+        agent=agent,
+        agent_conf=tmp_path / "agent.conf",
+        agent_token=tmp_path / "agent.token",
+        agent_state=tmp_path / "agent-state",
+    )

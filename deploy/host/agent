@@ -1,0 +1,115 @@
+#!/bin/sh
+# drivecanary agent: push. For a host the hub should not, or cannot, reach over ssh: one that is only up on
+# demand, or the hypervisor the hub itself runs on. Run by drivecanary-agent.timer as the unprivileged
+# drivecanary user, it
+#   1. has the gate build the same envelope a pull would have fetched (the probe still runs as root through the
+#      one sudoers line; the attrlogs are read from the offsets the hub last acknowledged),
+#   2. keeps it, gzipped, in a spool, and
+#   3. POSTs the spool to the hub oldest first, with this host's token.
+# A delivery that fails stays in the spool for the next run (bounded: SPOOL_MAX_FILES, SPOOL_MAX_MB), and the
+# failure is told to the hub with the next delivery that gets through, so the host's page says what happened.
+# The hub's reply carries how far it has read each attrlog; that is where the next envelope starts.
+#
+# /etc/drivecanary/agent.conf    HUB_URL=http://hub:8081     (root-owned; sourced)
+# /etc/drivecanary/agent.token   Authorization: Bearer ...   (mode 0600, owned by drivecanary)
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+LC_ALL=C
+export PATH LC_ALL
+VERSION=1
+GATE=/usr/local/lib/drivecanary/gate
+CONF=/etc/drivecanary/agent.conf
+TOKEN=/etc/drivecanary/agent.token
+STATE=${STATE_DIRECTORY:-/var/lib/drivecanary-agent}
+SPOOL_MAX_FILES=24
+SPOOL_MAX_MB=256
+umask 077
+case "${1:-}" in help|--help|-h)
+  echo "usage: $0  -- no arguments; builds this host's envelope, spools it and POSTs the spool to HUB_URL ($CONF) with the token in $TOKEN"
+  exit 0 ;;
+esac
+[ $# -eq 0 ] || { echo "agent: takes no arguments" >&2; exit 64; }
+[ -r "$CONF" ] || { echo "agent: $CONF is missing" >&2; exit 78; }
+# shellcheck disable=SC1090
+. "$CONF"
+[ -n "${HUB_URL:-}" ] || { echo "agent: HUB_URL is not set in $CONF" >&2; exit 78; }
+[ -r "$TOKEN" ] || { echo "agent: $TOKEN is missing or unreadable" >&2; exit 78; }
+SPOOL=$STATE/spool
+mkdir -p "$SPOOL" || exit 73
+exec 9>"$STATE/lock" || exit 73
+if ! flock -n 9; then echo "agent: another agent is still running" >&2; exit 75; fi
+
+failed() { # failed MESSAGE: remembered until a delivery gets through
+  echo "agent: $*" >&2
+  printf '%s %s\n' "$(date +%s)" "$*" | tr -cd '[:print:]\n' >> "$STATE/failures"
+}
+
+# 1. this run's envelope
+offsets=""
+if [ -f "$STATE/offsets" ]; then
+  offsets=$(grep -E '^attrlog\.[A-Za-z0-9_.-]+\.csv=[0-9]{1,12}$' "$STATE/offsets" | tr '\n' ' ')
+fi
+new=$SPOOL/.new.$$
+SSH_ORIGINAL_COMMAND="drivecanary-collect $offsets" "$GATE" > "$new" 2> "$STATE/gate.err"
+rc=$?
+if [ "$rc" -eq 0 ] && [ -s "$new" ]; then
+  gzip -c "$new" > "$new.gz" && mv "$new.gz" "$SPOOL/$(date +%s).env.gz"
+else
+  failed "gate exited $rc: $(tail -n 1 "$STATE/gate.err" 2>/dev/null)"
+fi
+rm -f "$new" "$new.gz"
+
+# 2. the spool stays within bounds: the oldest go first
+while :; do
+  count=$(find "$SPOOL" -name '*.env.gz' | wc -l | tr -d ' ')
+  kb=$(du -sk "$SPOOL" | cut -f1)
+  { [ "$count" -gt "$SPOOL_MAX_FILES" ] || [ "$kb" -gt $((SPOOL_MAX_MB * 1024)) ]; } && [ "$count" -gt 1 ] || break
+  oldest=$(find "$SPOOL" -name '*.env.gz' | sort | head -n 1)
+  failed "spool full: dropped $(basename "$oldest") undelivered"
+  rm -f "$oldest"
+done
+
+# 3. deliver, oldest first
+status=0
+for f in $(find "$SPOOL" -name '*.env.gz' | sort); do
+  nfail=0
+  last=""
+  if [ -s "$STATE/failures" ]; then
+    nfail=$(wc -l < "$STATE/failures" | tr -d ' ')
+    last=$(tail -n 1 "$STATE/failures" | cut -c1-200)
+  fi
+  code=$(curl -sS --connect-timeout 10 --max-time 600 -o "$STATE/reply" -w '%{http_code}' \
+    -H @"$TOKEN" -H 'Content-Type: application/octet-stream' -H 'Content-Encoding: gzip' \
+    -H "X-Agent-Version: $VERSION" -H "X-Agent-Failures: $nfail" -H "X-Agent-Last-Failure: $last" \
+    --data-binary @"$f" "$HUB_URL/api/ingest" 2> "$STATE/curl.err")
+  crc=$?
+  if [ "$crc" -ne 0 ]; then
+    failed "could not reach $HUB_URL (curl $crc): $(tail -n 1 "$STATE/curl.err")"
+    status=1
+    break
+  fi
+  first=$(head -n 1 "$STATE/reply" 2>/dev/null)
+  case "$code" in
+    200)
+      # how far the hub has read each attrlog: the next envelope starts there
+      sed -n 's/^cursor //p' "$STATE/reply" | grep -E '^attrlog\.[A-Za-z0-9_.-]+\.csv=[0-9]{1,12}$' > "$STATE/offsets.new"
+      mv "$STATE/offsets.new" "$STATE/offsets"
+      rm -f "$f"
+      case "$first" in
+        ok*) : > "$STATE/failures"; echo "agent: delivered $(basename "$f"): $first" ;;
+        *) failed "the hub could not use $(basename "$f"): $first"; status=1 ;;
+      esac ;;
+    400|413)
+      failed "the hub refused $(basename "$f") ($code), dropped: $first"
+      rm -f "$f"
+      status=1 ;;
+    401|403)
+      failed "the hub refused this host's token ($code): $first"
+      status=1
+      break ;;
+    *)
+      failed "the hub answered $code, will try again: $first"
+      status=1
+      break ;;
+  esac
+done
+exit $status

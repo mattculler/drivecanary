@@ -66,7 +66,7 @@ def test_web_cannot_read_the_collectors_key() -> None:
 
 def test_every_script_answers_help_dash_dash_help_and_dash_h_alike() -> None:
     scripts = [DEPLOY / n for n in ("install.sh", "update.sh", "backup.sh", "drivecanary-cli")]
-    scripts += [DEPLOY / "host" / n for n in ("install-host.sh", "probe", "gate")]
+    scripts += [DEPLOY / "host" / n for n in ("install-host.sh", "probe", "gate", "agent")]
     for script in scripts:
         for word in ("help", "--help", "-h"):
             cp = subprocess.run(["sh", str(script), word], capture_output=True, text=True, timeout=30, check=False)
@@ -86,8 +86,27 @@ def test_host_side_files_are_what_the_design_says() -> None:
     assert "set -f" in gate and 'sudo -n "$PROBE"' in gate
     probe = (DEPLOY / "host" / "probe").read_text()
     assert "flock -n" in probe and "timeout -k 5" in probe and "standby,$STANDBY_EXIT" in probe
-    for f in ("probe", "gate", "install-host.sh"):
+    for f in ("probe", "gate", "agent", "install-host.sh"):
         assert (DEPLOY / "host" / f).stat().st_mode & 0o111, f
+
+
+def test_the_push_agent_is_what_the_design_says() -> None:
+    host = DEPLOY / "host"
+    agent = (host / "agent").read_text()
+    assert '-H @"$TOKEN"' in agent, "the token never appears on a command line"
+    assert "--connect-timeout" in agent and "--max-time" in agent and "flock -n" in agent
+    assert "SPOOL_MAX_FILES" in agent and "SPOOL_MAX_MB" in agent
+    code = [line for line in agent.splitlines() if not line.lstrip().startswith("#")]
+    assert not any("sudo" in line for line in code), "only the gate runs the probe"
+    unit = (host / "drivecanary-agent.service").read_text()
+    assert "User=drivecanary" in unit and "TimeoutStartSec=" in unit and "StateDirectory=drivecanary-agent" in unit
+    active = [line for line in unit.splitlines() if not line.startswith("#")]
+    assert not any("NoNewPrivileges" in line or "PrivateDevices" in line for line in active), "sudo and the disks"
+    timer = (host / "drivecanary-agent.timer").read_text()
+    assert "OnBootSec=" in timer and "Persistent=true" in timer and "OnCalendar=hourly" in timer
+    install = (host / "install-host.sh").read_text()
+    assert '-m 0600 "$T/agent.token" /etc/drivecanary/agent.token' in install
+    assert 'rm -f "$HOME_DIR/.ssh/authorized_keys"' in install, "a push host holds no key of the hub's"
 
 
 def test_the_cli_wrapper_and_update_are_installed_the_safe_way() -> None:

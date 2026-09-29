@@ -1,0 +1,23 @@
+[Unit]
+Description=drivecanary: report this host's drive health to the hub
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# a oneshot has no start timeout by default, and a wedged run would swallow every later timer firing
+TimeoutStartSec=20min
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+User=drivecanary
+Group=drivecanary
+# the spool, the acknowledged offsets and the remembered failures: /var/lib/drivecanary-agent
+StateDirectory=drivecanary-agent
+StateDirectoryMode=0700
+StandardOutput=journal
+StandardError=journal
+PrivateTmp=yes
+ProtectHome=yes
+# not NoNewPrivileges, not PrivateDevices: the agent runs the probe through sudo, and the probe opens the disks
+ExecStart=/usr/local/lib/drivecanary/agent

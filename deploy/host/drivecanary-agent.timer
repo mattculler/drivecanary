@@ -1,0 +1,13 @@
+[Unit]
+Description=drivecanary: hourly report to the hub
+
+[Timer]
+OnCalendar=hourly
+# a host that is only up on demand reports soon after it wakes, not at the next full hour
+OnBootSec=2min
+RandomizedDelaySec=5min
+Unit=drivecanary-agent.service
+Persistent=true
+
+[Install]
+WantedBy=timers.target
