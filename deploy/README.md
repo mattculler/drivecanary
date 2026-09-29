@@ -159,6 +159,30 @@ never reaches out to a push host); the host's journal can.
 | pull host to push | `drivecanary host set atlas --transport push`, then `install-host.sh atlas --push ...` (it removes the hub's key) |
 | push host to pull | `drivecanary host set pve --transport pull`, then `install-host.sh pve --hub-ip ... --hub-key ...` (it stops the agent), then `drivecanary host keyscan pve` |
 
+### OPNsense
+
+A router running OPNsense (FreeBSD) is a push host, by the same two steps:
+
+```bash
+drivecanary host add opnsense --transport push                                   # hub
+deploy/host/install-host.sh opnsense --push --hub-url http://10.100.100.NN:8081 \
+  --token <from the hub> --target root@opnsense.domain                           # workstation
+```
+
+Before that, on the router: the `os-smart` plugin (System > Firmware > Plugins), which brings `smartctl`, and
+ssh for root (System > Settings > Administration), which the install needs and the agent does not.
+
+It is push only, and the agent runs as root from `/usr/local/etc/cron.d/drivecanary`, hourly and two minutes
+after a boot. OPNsense deletes accounts it did not make itself and lets only administrators in over ssh, so
+there is no unprivileged user to give the job to and no restricted key to pull with; its own crontab names
+that directory as the place for jobs of yours. What the agent says goes to the system log (System > Log Files
+> General, `drivecanary-agent`). The files: `/usr/local/lib/drivecanary/` (probe, gate, agent),
+`/usr/local/etc/drivecanary/` (the hub's URL, the token), `/var/db/drivecanary-agent/` (the spool).
+
+What is different about what it reports: no attribute-log history (smartd does not run there, so trends start
+at the first report), no pools on a UFS install, and the router's zone is read from OPNsense's own config.
+After a firmware upgrade, check the host still reports; if the upgrade removed the files, run the install again.
+
 The token is the only thing between the LAN and that host's row: anyone holding it can post readings as that
 host, and nothing else. The hub keeps only its hash. The listener reads no more than `[ingest].max_body_mb`
 and inflates no further than `[collect].max_output_mb`.

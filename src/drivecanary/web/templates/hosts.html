@@ -30,6 +30,8 @@ bound to the gate. It ends by printing the host's key fingerprint.</p>
 <p><b>2. Workstation:</b> the <code>drivecanary</code> user, the probe, the agent with its token, and its timer. It ends
 by sending the first report.</p>
 <pre>deploy/host/install-host.sh HOST --push --hub-url http://{{ hub_ip or 'THIS-VM-IP' }}:{{ cfg.ingest.port }} --token TOKEN</pre>
+<p class="muted">An OPNsense router is a push host too, by the same two steps (use <code>--target root@ROUTER</code>).
+There the agent runs from root's cron, and <code>smartctl</code> comes from the <code>os-smart</code> plugin.</p>
 <p class="muted">A lost token: <code>drivecanary host token HOST</code> makes a new one, and step 2 again installs it.
 Moving a host from one way to the other: <code>drivecanary host set HOST --transport push</code> (or <code>pull</code>),
 then the matching install.</p>

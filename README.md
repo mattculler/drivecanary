@@ -77,4 +77,4 @@ identity smartctl knows (model family, firmware, WWN, capacity), the pools, and 
 ## Not yet
 
 NVMe attribute logs (smartd writes them only from smartmontools 7.5), an importer for the two 2017 text
-captures, and hosts that are not Linux. Alerting is smartd's job on each host (`-M exec`), not the hub's.
+captures, and hosts other than Debian and OPNsense. Alerting is smartd's job on each host (`-M exec`), not the hub's.
