@@ -29,7 +29,7 @@ def make_engine(path: Path | str, *, echo: bool = False) -> Engine:
         # WAL: the hourly collector writes while pages are read, and neither waits on the other
         cur.execute("PRAGMA journal_mode=WAL")
         cur.execute("PRAGMA synchronous=NORMAL")
-        cur.execute("PRAGMA busy_timeout=10000")
+        cur.execute("PRAGMA busy_timeout=60000")
         cur.close()
 
     return engine

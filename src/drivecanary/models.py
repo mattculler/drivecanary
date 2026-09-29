@@ -104,7 +104,8 @@ class Host(Base):
     transport: Mapped[str] = mapped_column(String(8), default=Transport.PULL.value)
     state: Mapped[str] = mapped_column(String(16), default=HostState.PENDING.value)
     machine_id: Mapped[str | None] = mapped_column(String(64))
-    hostkey: Mapped[str | None] = mapped_column(Text)  # the pinned known_hosts line
+    hostkey: Mapped[str | None] = mapped_column(Text)  # the pinned known_hosts line (pull)
+    push_token_hash: Mapped[str | None] = mapped_column(String(64))  # sha256 of the agent's token (push)
     gate_version: Mapped[int | None] = mapped_column(Integer)
     probe_version: Mapped[int | None] = mapped_column(Integer)
     os_release: Mapped[str | None] = mapped_column(String(128))
@@ -200,13 +201,17 @@ class HostAttempt(Base):
     """One try at one host. Every expected host gets one per run, with the class and reason when it failed."""
 
     __tablename__ = "host_attempt"
-    __table_args__ = (Index("ix_host_attempt_host_started", "host_id", "started_at"),)
+    __table_args__ = (
+        Index("ix_host_attempt_host_started", "host_id", "started_at"),
+        Index("ix_host_attempt_payload", "payload_id"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     run_id: Mapped[int | None] = mapped_column(ForeignKey("collection_run.id"))
     host_id: Mapped[int] = mapped_column(ForeignKey("host.id"))
     started_at: Mapped[datetime] = mapped_column(Epoch, default=utcnow)
     finished_at: Mapped[datetime | None] = mapped_column(Epoch)
+    transport: Mapped[str | None] = mapped_column(String(8))  # pull | push: how this one arrived
     ok: Mapped[bool] = mapped_column(default=False)
     failure_class: Mapped[str | None] = mapped_column(String(32))
     reason: Mapped[str | None] = mapped_column(Text)
