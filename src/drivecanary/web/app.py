@@ -20,6 +20,7 @@ from drivecanary import __version__, queries
 from drivecanary.config import Config, load_config
 from drivecanary.db import make_engine, sessionmaker_for
 from drivecanary.models import AttrlogCursor, CollectionRun, Drive, Host, HostAttempt, Pool, Verdict
+from drivecanary.pools import pool_members
 from drivecanary.scrub import summarize as summarize_scrub
 from drivecanary.smart import ATTR_LABELS
 from drivecanary.timeutil import hours_ago, utcnow
@@ -239,7 +240,11 @@ def create_app(config: Config | None = None) -> FastAPI:
             raise HTTPException(404, "no such pool")
         host = db.get(Host, pool.host_id)
         latest = queries.latest_pool_status(db, pool.id)
-        return page(request, "pool.html", pool=pool, host=host, latest=latest)
+        members, others = pool_members(db, pool, latest)
+        rows = {d.drive.id: d for d in queries.overview(db, cfg).drives}
+        return page(
+            request, "pool.html", pool=pool, host=host, latest=latest, members=members, others=others, rows=rows
+        )
 
     @app.get("/healthz")
     def healthz(db: Db) -> JSONResponse:

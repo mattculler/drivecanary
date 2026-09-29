@@ -174,6 +174,23 @@ Error summary:    no errors found
 """
 
 
+#: the block devices behind the fixture host: the serials are the smartctl fixtures', sdc to sde report nothing
+LSBLK_JSON = json.dumps(
+    {
+        "blockdevices": [
+            {"kname": "sda", "path": "/dev/sda", "type": "disk", "serial": "9RK1XXXX", "pkname": None},
+            {"kname": "sda1", "path": "/dev/sda1", "type": "part", "serial": None, "pkname": "sda"},
+            {"kname": "sdb", "path": "/dev/sdb", "type": "disk", "serial": "MSK423Y20S3HBC", "pkname": None},
+            {"kname": "nvme0n1", "path": "/dev/nvme0n1", "type": "disk", "serial": "BTNH93710FS91P0B", "pkname": None},
+            {"kname": "nvme0n1p2", "path": "/dev/nvme0n1p2", "type": "part", "serial": None, "pkname": "nvme0n1"},
+            {"kname": "dm-0", "path": "/dev/mapper/vault", "type": "crypt", "serial": None, "pkname": "nvme0n1p2"},
+            {"kname": "sdc", "path": "/dev/sdc", "type": "disk", "serial": "NOSMARTHERE1", "pkname": None},
+        ]
+    },
+    indent=1,
+)
+
+
 def _shim(path: Path, body: str) -> None:
     path.write_text("#!/bin/sh\n" + body)
     path.chmod(path.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
@@ -325,7 +342,8 @@ esac
 exit 1
 """,
     )
-    _shim(shims / "lsblk", 'echo \'{"blockdevices": [{"kname": "sda", "type": "disk"}]}\'\n')
+    (tmp_path / "lsblk.json").write_text(LSBLK_JSON)
+    _shim(shims / "lsblk", f'cat "{tmp_path}/lsblk.json"\n')
     _shim(shims / "mdadm", 'echo "MD_LEVEL=raid1"\n')
     return ProbeEnv(
         gate=gate,

@@ -66,6 +66,15 @@ def test_pages(cfg: Config, factory: sessionmaker[Session], probe_env: ProbeEnv)
     assert r.status_code == 200
     as_printed = "<pre>UUID:             1234-uuid\nScrub started:    Sun Sep 14 03:00:00 2026\n"
     assert as_printed in r.text, "the scrub output keeps its lines"
+    assert "not matched to a drive this host reports" in r.text, "sde reports nothing: listed, not linked"
+    with factory() as s:
+        tank = s.scalar(select(Pool).where(Pool.name == "tank"))
+        assert tank is not None
+    r = client.get(f"/pool/{tank.id}")
+    members, others = r.text.split("Other disks on atlas")
+    assert "WDC WD140EDFZ-11A0VA0" in members and "Hitachi HDS721050DLE630" in members and "INTEL" not in members
+    assert "INTEL SSDPEKNW010T8" in others and "WDC" not in others.split("<h2>")[0]
+    assert members.count('href="/drive/') == 2 and others.split("<h2>")[0].count('href="/drive/') == 1
     r = client.get("/healthz")
     assert r.status_code == 200 and r.json()["ok"] and r.json()["last_collection_age_hours"] is not None
     icons = ("/favicon.ico", "/static/favicon-16.png", "/static/favicon-32.png", "/static/apple-touch-icon.png")
