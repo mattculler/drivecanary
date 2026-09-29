@@ -26,8 +26,9 @@ esac
 [ $# -eq 0 ] || { echo "probe: takes no arguments" >&2; exit 64; }
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/drivecanary-probe.XXXXXX") || exit 70
 trap 'rm -rf "$TMP"' EXIT
+# somewhere every run agrees on: a lock in this run's own temp directory would never be contended
 LOCKDIR=/run/lock
-[ -w "$LOCKDIR" ] || LOCKDIR=$TMP
+[ -w "$LOCKDIR" ] || LOCKDIR=/tmp
 exec 9>"$LOCKDIR/drivecanary-probe.lock" || exit 70
 if ! flock -n 9; then echo "probe: another probe is still running" >&2; exit 75; fi
 N=0

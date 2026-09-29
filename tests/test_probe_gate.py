@@ -131,6 +131,28 @@ def test_a_host_without_a_zone_uses_what_it_reports_then_the_default(
     assert str(_host_zone(host, env, cfg, warnings)) == "America/New_York" and warnings
 
 
+def test_a_second_probe_is_turned_away_while_one_runs(probe_env: ProbeEnv) -> None:
+    import os
+    import subprocess
+
+    (probe_env.shims / "smartctl").write_text("#!/bin/sh\nsleep 3\necho '{}'\n")
+    env = dict(os.environ, PATH=f"{probe_env.shims}:{os.environ['PATH']}")
+    first = subprocess.Popen(
+        ["sh", str(probe_env.probe)], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+    )
+    try:
+        import time
+
+        time.sleep(1)
+        second = subprocess.run(["sh", str(probe_env.probe)], env=env, capture_output=True, text=True, check=False)
+        assert second.returncode == 75 and "another probe is still running" in second.stderr
+    finally:
+        first.kill()
+        first.wait()
+    text = probe_env.probe.read_text()
+    assert "LOCKDIR=$TMP" not in text, "a lock in the run's own temp directory is never contended"
+
+
 def test_devices_conf_skips_and_adds(probe_env: ProbeEnv) -> None:
     probe_env.devices_conf.write_text("# comment\n/dev/sdb skip\n/dev/sdz scsi\n")
     env = parse_envelope(probe_env.run_gate("drivecanary-collect").stdout)
