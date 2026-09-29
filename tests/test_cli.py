@@ -99,6 +99,33 @@ def test_push_hosts_get_a_token_and_are_not_pulled(tmp_path: Path) -> None:
     engine.dispose()
 
 
+def test_a_new_address_takes_the_pinned_key_with_it(tmp_path: Path) -> None:
+    from sqlalchemy import select
+
+    from drivecanary.config import load_config
+    from drivecanary.db import make_engine, sessionmaker_for
+    from drivecanary.models import Host
+
+    c = str(_config(tmp_path))
+    assert runner.invoke(app, ["-c", c, "db", "migrate"]).exit_code == 0
+    assert runner.invoke(app, ["-c", c, "host", "add", "atlas", "--no-keyscan"]).exit_code == 0
+    engine = make_engine(load_config(Path(c)).db_path)
+    with sessionmaker_for(engine)() as s:
+        host = s.scalar(select(Host))
+        assert host is not None and host.address == "atlas"
+        host.hostkey = "atlas ssh-ed25519 AAAAkey"
+        s.commit()
+    known = tmp_path / "state" / "ssh" / "known_hosts"
+    r = runner.invoke(app, ["-c", c, "host", "set", "atlas", "--address", "atlas.domain"])
+    assert r.exit_code == 0 and known.read_text() == "atlas.domain ssh-ed25519 AAAAkey\n"
+    assert "HostName atlas.domain" in (tmp_path / "state" / "ssh" / "config").read_text()
+    r = runner.invoke(app, ["-c", c, "host", "set", "atlas", "--port", "2222"])
+    assert r.exit_code == 0 and known.read_text() == "[atlas.domain]:2222 ssh-ed25519 AAAAkey\n"
+    r = runner.invoke(app, ["-c", c, "host", "set", "atlas", "--note", "nothing to do with the key"])
+    assert r.exit_code == 0 and known.read_text() == "[atlas.domain]:2222 ssh-ed25519 AAAAkey\n"
+    engine.dispose()
+
+
 def test_a_pasted_ssh_keygen_line_is_a_fingerprint() -> None:
     """`ssh-keygen -lf` prints the size before the fingerprint and the key comment after it; pasting any of
     that must compare equal to the bare token (2026-09-28: '... does not match ... root@atlas')."""

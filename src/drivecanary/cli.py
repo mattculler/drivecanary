@@ -427,12 +427,18 @@ def host_set(
             if transport == Transport.PULL.value:
                 host.push_token_hash = None
             host.transport = transport
+        was = (host.address, host.ssh_port)
         if address is not None:
             host.address = address
         if user is not None:
             host.ssh_user = user or None
         if port is not None:
             host.ssh_port = port
+        if host.hostkey and (host.address, host.ssh_port) != was:
+            # the pinned key is filed under the address and port: the same key, under the new ones
+            _, _, key = host.hostkey.strip().partition(" ")
+            filed = host.address if host.ssh_port == 22 else f"[{host.address}]:{host.ssh_port}"
+            host.hostkey = f"{filed} {key}"
         if tz is not None:
             zone(tz)
             host.tz = tz
