@@ -94,14 +94,51 @@ counting); `--state pending` re-arms it. `--state retired` keeps its history and
 
 Debian's default `smartd.conf` (`DEVICESCAN -d removable -n standby -m root -M exec ...`) writes the attribute
 logs drivecanary reads, but schedules **no self-tests** and its alert mail goes nowhere without a mailer.
-Alerting is smartd's job (it runs every 30 minutes, whether or not the hub is up), so on each host consider:
+Alerting is smartd's job (it runs every 30 minutes, whether or not the hub is up), so on each host consider
+`-W 4,45,55 -m <nomailer> -M exec /usr/local/bin/smartd-notify` on the `DEVICESCAN` line, with `smartd-notify`
+a few lines that post `$SMARTD_MESSAGE` to ntfy or whatever you read. The hub does not alert.
 
-```
-DEVICESCAN -a -o on -S on -n standby,q -s (S/../.././02|L/../../6/03) -W 4,45,55 -m <nomailer> -M exec /usr/local/bin/smartd-notify
-```
+### Self-tests
 
-with `smartd-notify` a few lines that post `$SMARTD_MESSAGE` to ntfy or whatever you read. `smartd -q
-showtests` confirms the schedule parses. The hub does not alert.
+`install-host.sh HOST ... --self-tests` gives every SATA and SAS drive on the host a schedule of its own, and
+`--no-self-tests` takes it out again. It is smartd that starts the tests; the hub never does, and the probe
+stays read-only.
+
+| test | when | how long |
+|---|---|---|
+| short | the 17th of every month, each drive at an hour of its own (01:00, 02:00, ...) | a minute or two |
+| long | once a year at 01:00, each drive on a date of its own: the 19th or the 24th of a month of its own | hours; a 14 TB drive says a day |
+
+So no two drives test at once, and two long tests are never less than five days apart: drive 1 has
+19 January, drive 2 19 July, drive 3 19 April, drive 4 19 October, and the 24ths follow once the 19ths are
+taken (24 drives to a host). Nothing starts before the 17th, which keeps a test clear of the scrubs that run
+by the calendar: Debian's md check on the first Sunday of a month and its ZFS scrub on the second, neither of
+which can fall after the 14th.
+
+What it does on the host: writes one line a drive, named by `/dev/disk/by-id` so that a drive keeps its dates
+when its letter changes, between `# BEGIN drivecanary self-tests` and `# END drivecanary self-tests` above the
+`DEVICESCAN` line of `/etc/smartd.conf`. Each line carries `DEVICESCAN`'s own directives, so a drive is
+watched and mailed about as before; `DEVICESCAN` goes on covering whatever is not named. The new file is put
+to `smartd -q showtests` before it replaces the old, which is kept as `smartd.conf.before-drivecanary`.
+`/etc/drivecanary/selftests` remembers which dates a drive has, so that adding a drive moves no other.
+`/usr/local/lib/drivecanary/selftests show` prints what it would write and changes nothing.
+
+What it cannot do:
+
+- **A scrub started by hand, or by a timer of your own, is not seen.** smartd looks at the clock and at the
+  drive it is about to test, nothing else. A btrfs scrub that takes two days should be started before the
+  17th or after the 25th, or in a month none of that pool's drives has its long test in (the host's page
+  lists them).
+- **A host that was off at the hour runs the test when it is next up**, which is then at no planned time.
+- **NVMe drives are not scheduled**: smartd starts their self-tests only from smartmontools 7.5.
+- A `smartd.conf` without a `DEVICESCAN` line is one you wrote, and is left alone: the script says so.
+- On OPNsense there is no smartd, so root's cron starts the tests (`/usr/local/etc/cron.d/drivecanary-selftests`),
+  on the same dates.
+
+A host's page lists each drive's next short and long test, how long the drive says a long test takes, and
+the last test it ran. A drive with a schedule and no test in 45 days of power-on time is a warning
+(`[status].selftest_max_age_days`; 0 turns it off): the schedule has stopped. A drive that is testing, and a
+pool that is scrubbing, say so beside their names on every page.
 
 ## What a drive's page goes by
 
