@@ -116,6 +116,19 @@ def test_the_hub_runs_the_ingest_listener_as_the_collector() -> None:
         assert "drivecanary-ingest.service" in (DEPLOY / name).read_text(), name
 
 
+def test_the_installer_knows_opnsense() -> None:
+    install = (DEPLOY / "host" / "install-host.sh").read_text()
+    assert "/usr/local/etc/cron.d/drivecanary" in install and "logger -t drivecanary-agent" in install
+    assert "only --push is supported here" in install
+    freebsd = install[install.index('if [ "$(uname -s)" = FreeBSD ]; then') : install.index("  exit 0\nfi\n")]
+    assert "adduser" not in freebsd and "sudoers" not in freebsd and "authorized_keys" not in freebsd
+    assert "-g root" not in freebsd, "gid 0 is wheel there: by number"
+    assert 'ssh "$TARGET" "sh -c ' in install, "the far login shell need not be a Bourne shell"
+    for script in ("probe", "gate", "agent"):
+        text = (DEPLOY / "host" / script).read_text()
+        assert "stat -c" not in text and "/proc/sys/kernel/random/uuid" not in text, script
+
+
 def test_the_cli_wrapper_and_update_are_installed_the_safe_way() -> None:
     wrapper = (DEPLOY / "drivecanary-cli").read_text()
     assert "sudo -u drivecanary" in wrapper and "update) exec sudo /usr/local/sbin/drivecanary-update" in wrapper

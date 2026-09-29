@@ -20,6 +20,10 @@
 #   5. runs the agent once and shows what the hub answered
 # The hub can never do any of this: only your key can.
 #
+# OPNsense (FreeBSD) is push only. It keeps no account it did not make itself and lets only administrators in over
+# ssh, so there the agent runs from root's cron (/usr/local/etc/cron.d/drivecanary, which OPNsense's own crontab
+# names as the place for jobs of yours), with no user and no sudo. smartctl comes from the os-smart plugin.
+#
 # usage: deploy/host/install-host.sh HOST --hub-ip IP --hub-key FILE-OR-KEY [--target SSH-DEST]
 #        deploy/host/install-host.sh HOST --push --hub-url URL --token TOKEN [--target SSH-DEST]
 #   HOST        the name the host has (or will have) on the hub
@@ -74,6 +78,54 @@ set -eu
 T=$(cd "$(dirname "$0")" && pwd)
 MODE=$(cat "$T/mode")
 LIB=/usr/local/lib/drivecanary
+if [ "$(uname -s)" = FreeBSD ]; then
+  ETC=/usr/local/etc/drivecanary
+  STATE=/var/db/drivecanary-agent
+  CRON=/usr/local/etc/cron.d/drivecanary
+  echo "== $(hostname): $(opnsense-version 2>/dev/null || echo FreeBSD) on FreeBSD $(freebsd-version) ($MODE)"
+  if [ "$MODE" != push ]; then
+    echo "this host is FreeBSD: only --push is supported here (see the top of install-host.sh)" >&2
+    exit 64
+  fi
+  PATH=$PATH:/usr/local/sbin:/usr/local/bin
+  if ! command -v smartctl >/dev/null 2>&1; then
+    echo "smartctl missing: install the os-smart plugin (System > Firmware > Plugins), or pkg install smartmontools" >&2
+    exit 1
+  fi
+  V=$(smartctl --version | head -1)
+  echo "== $V"
+  case "$V" in *" 7."*|*" 8."*) ;; *) echo "smartctl 7.0 or newer is needed for --json" >&2; exit 1 ;; esac
+  for tool in flock curl gzip timeout; do
+    command -v "$tool" >/dev/null 2>&1 || { echo "$tool is missing: pkg install $tool" >&2; exit 1; }
+  done
+  install -d -o 0 -g 0 -m 0755 "$LIB" "$ETC" /usr/local/etc/cron.d
+  install -d -o 0 -g 0 -m 0700 "$STATE"
+  install -o 0 -g 0 -m 0755 "$T/probe" "$T/gate" "$T/agent" "$LIB/"
+  install -o 0 -g 0 -m 0644 "$T/agent.conf" "$ETC/agent.conf"
+  install -o 0 -g 0 -m 0600 "$T/agent.token" "$ETC/agent.token"
+  # hourly, at a minute of this host's own so that the hosts do not all report at once; and after a boot.
+  # What the agent says goes to the system log (System > Log Files > General).
+  MINUTE=$(( $(hostname | cksum | cut -d " " -f 1) % 60 ))
+  {
+    echo "# drivecanary: report this host's drive health to the hub (deploy/host/install-host.sh wrote this)"
+    echo "SHELL=/bin/sh"
+    echo "PATH=/etc:/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin"
+    echo "$MINUTE	*	*	*	*	root	$LIB/agent 2>&1 | logger -t drivecanary-agent"
+    echo "@reboot	root	sleep 120; $LIB/agent 2>&1 | logger -t drivecanary-agent"
+  } > "$T/cron"
+  install -o 0 -g 0 -m 0644 "$T/cron" "$CRON"
+  echo "== $CRON: hourly at minute $MINUTE, and two minutes after a boot"
+  echo "== self-test: probe (first frame)"
+  "$LIB/probe" | head -1
+  echo "== first report to $(sed -n 's/^HUB_URL=//p' "$ETC/agent.conf")"
+  if "$LIB/agent"; then
+    echo "== reported"
+  else
+    echo "the first report FAILED (above). cron will keep trying every hour; what was collected is spooled in $STATE." >&2
+    exit 1
+  fi
+  exit 0
+fi
 HOME_DIR=/var/lib/drivecanary-probe
 echo "== $(hostname): $(cat /etc/os-release 2>/dev/null | sed -n 's/^PRETTY_NAME="\(.*\)"/\1/p') ($MODE)"
 if ! command -v smartctl >/dev/null 2>&1; then echo "smartctl missing: apt install smartmontools" >&2; exit 1; fi
@@ -135,7 +187,8 @@ else
 fi
 REMOTE
 echo "installing on $HOST via ssh $TARGET ($MODE)"
-tar -C "$WORK" -cf - . | ssh "$TARGET" 'set -e; T=$(mktemp -d); tar -C "$T" -xf -; sh "$T/remote.sh"; rc=$?; rm -rf "$T"; exit $rc'
+# through `sh -c`: the login shell on the other end need not be a Bourne shell (OPNsense's root has csh)
+tar -C "$WORK" -cf - . | ssh "$TARGET" "sh -c 'T=\$(mktemp -d /tmp/drivecanary-install.XXXXXX) && tar -C \$T -xf - && sh \$T/remote.sh; rc=\$?; rm -rf \$T; exit \$rc'"
 if [ "$MODE" = pull ]; then
   echo "done. On the hub: drivecanary host add $HOST --address <hostname> --fingerprint SHA256:<above>; then drivecanary collect --host $HOST"
 else
