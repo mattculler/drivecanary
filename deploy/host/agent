@@ -11,7 +11,11 @@
 # The hub's reply carries how far it has read each attrlog; that is where the next envelope starts.
 #
 # /etc/drivecanary/agent.conf    HUB_URL=http://hub:8081     (root-owned; sourced)
-# /etc/drivecanary/agent.token   Authorization: Bearer ...   (mode 0600, owned by drivecanary)
+# /etc/drivecanary/agent.token   Authorization: Bearer ...   (mode 0600, owned by whoever runs the agent)
+#
+# On FreeBSD (OPNsense) the two files are in /usr/local/etc/drivecanary, the state in /var/db/drivecanary-agent,
+# and the agent runs from root's cron (/usr/local/etc/cron.d/drivecanary): OPNsense keeps no account it did not
+# make itself, so there is no unprivileged user to run it as.
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 LC_ALL=C
 export PATH LC_ALL
@@ -19,7 +23,13 @@ VERSION=1
 GATE=/usr/local/lib/drivecanary/gate
 CONF=/etc/drivecanary/agent.conf
 TOKEN=/etc/drivecanary/agent.token
-STATE=${STATE_DIRECTORY:-/var/lib/drivecanary-agent}
+STATE_DEFAULT=/var/lib/drivecanary-agent
+case "$(uname -s)" in FreeBSD)
+  CONF=/usr/local/etc/drivecanary/agent.conf
+  TOKEN=/usr/local/etc/drivecanary/agent.token
+  STATE_DEFAULT=/var/db/drivecanary-agent ;;
+esac
+STATE=${STATE_DIRECTORY:-$STATE_DEFAULT}
 SPOOL_MAX_FILES=24
 SPOOL_MAX_MB=256
 umask 077

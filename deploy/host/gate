@@ -15,6 +15,8 @@ export PATH LC_ALL
 VERSION=1
 PROBE=/usr/local/lib/drivecanary/probe
 ATTRLOG_DIR=/var/lib/smartmontools
+OS=$(uname -s)
+case "$OS" in FreeBSD) ATTRLOG_DIR=/var/db/smartmontools ;; esac
 set -f
 case "${1:-}" in help|--help|-h)
   echo "usage: forced command; reads SSH_ORIGINAL_COMMAND (drivecanary-ping | drivecanary-collect [FILE=OFFSET ...]) and writes the envelope to stdout"
@@ -53,21 +55,42 @@ trap 'rm -rf "$TMP"' EXIT
 printf 'DRIVECANARY-ENVELOPE 1\n'
 printf 'gate_version=%s\n' "$VERSION"
 printf 'hostname=%s\n' "$(hostname 2>/dev/null)"
-printf 'machine_id=%s\n' "$(cat /etc/machine-id 2>/dev/null)"
-printf 'boot_id=%s\n' "$(cat /proc/sys/kernel/random/boot_id 2>/dev/null)"
+case "$OS" in
+  FreeBSD)
+    machine_id=$(sysctl -n kern.hostuuid 2>/dev/null | tr -d -)
+    # no boot id here: the second the kernel booted says as much
+    boot_id=$(sysctl -n kern.boottime 2>/dev/null | sed -n 's/^{ sec = \([0-9][0-9]*\),.*/\1/p')
+    # /etc/localtime is a copy, not a link; OPNsense keeps the zone's name in its config
+    tz=$(cat /var/db/zoneinfo 2>/dev/null)
+    [ -n "$tz" ] || tz=$(sed -n 's:.*<timezone>\(.*\)</timezone>.*:\1:p' /conf/config.xml 2>/dev/null | head -n 1)
+    ;;
+  *)
+    machine_id=$(cat /etc/machine-id 2>/dev/null)
+    boot_id=$(cat /proc/sys/kernel/random/boot_id 2>/dev/null)
+    tz=$(cat /etc/timezone 2>/dev/null)
+    if [ -z "$tz" ]; then
+      l=$(readlink -f /etc/localtime 2>/dev/null)
+      case "$l" in */zoneinfo/*) tz=${l##*/zoneinfo/} ;; esac
+    fi
+    ;;
+esac
+printf 'machine_id=%s\n' "$machine_id"
+printf 'boot_id=%s\n' "$boot_id"
 printf 'collected_at=%s\n' "$(date +%s)"
-tz=$(cat /etc/timezone 2>/dev/null)
-if [ -z "$tz" ]; then
-  l=$(readlink -f /etc/localtime 2>/dev/null)
-  case "$l" in */zoneinfo/*) tz=${l##*/zoneinfo/} ;; esac
-fi
 printf 'tz=%s\n' "$tz"
 printf 'utc_offset=%s\n' "$(date +%z)"
-printf 'payload_id=%s\n' "$(tr -d - < /proc/sys/kernel/random/uuid 2>/dev/null)"
+# sixteen random bytes as hex: the same on every system, where a uuid file or tool is not
+printf 'payload_id=%s\n' "$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')"
 printf 'HEADER-END\n'
 
-# the probe's frames go straight through; its exit and sudo's complaint, if any, become a frame of their own
-sudo -n "$PROBE" 2>"$TMP/err"
+# the probe's frames go straight through; its exit and sudo's complaint, if any, become a frame of their own.
+# Already root (an agent run from root's cron, as on OPNsense, where an account of its own cannot be kept):
+# there is nothing to step up to.
+if [ "$(id -u)" -eq 0 ]; then
+  "$PROBE" 2>"$TMP/err"
+else
+  sudo -n "$PROBE" 2>"$TMP/err"
+fi
 prc=$?
 printf 'FRAME name=probe.exit rc=%s out=0 err=%s\n' "$prc" "$(wc -c <"$TMP/err" | tr -d ' ')"
 cat "$TMP/err"
@@ -80,8 +103,9 @@ for f in "$ATTRLOG_DIR"/attrlog.*.csv; do
   [ -f "$f" ] || continue
   name=${f##*/}
   off=$(offset_for "$name")
-  inode=$(stat -c %i "$f")
-  size=$(stat -c %s "$f")
+  # ls and wc, not stat: stat's options are not the same from one system to the next
+  inode=$(ls -i "$f" | awk '{print $1}')
+  size=$(wc -c < "$f" | tr -d ' ')
   [ "$off" -le "$size" ] 2>/dev/null || off=0   # shorter than last time: rotated or rewritten, start over
   len=$((size - off))
   printf 'FRAME name=attrlog:%s rc=0 out=%s err=0 inode=%s size=%s offset=%s\n' "$name" "$len" "$inode" "$size" "$off"

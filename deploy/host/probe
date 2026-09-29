@@ -11,13 +11,21 @@
 #
 # What it runs: smartctl --scan-open, then `smartctl -j -x` per device (with -n standby so a sleeping disk stays
 # asleep; a device from /etc/drivecanary/devices.conf can override the -d type or be skipped), then whatever
-# of zpool, btrfs and md is present, lsblk, and os-release.
+# of zpool, btrfs and md is present, the disk list, and what the system calls itself.
+#
+# Linux (Debian) and FreeBSD (OPNsense): the few things that differ are chosen by `uname -s` below.
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 LC_ALL=C
 export PATH LC_ALL
 VERSION=1
 STANDBY_EXIT=3
 DEVICES_CONF=/etc/drivecanary/devices.conf
+LOCKDIR=/run/lock
+OS=$(uname -s)
+case "$OS" in FreeBSD)
+  DEVICES_CONF=/usr/local/etc/drivecanary/devices.conf
+  LOCKDIR=/var/run ;;
+esac
 umask 077
 case "${1:-}" in help|--help|-h)
   echo "usage: $0  -- no arguments; writes drivecanary probe frames (smartctl, zpool, btrfs, md, lsblk, os-release) to stdout; PROBE-END last"
@@ -27,8 +35,8 @@ esac
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/drivecanary-probe.XXXXXX") || exit 70
 trap 'rm -rf "$TMP"' EXIT
 # somewhere every run agrees on: a lock in this run's own temp directory would never be contended
-LOCKDIR=/run/lock
 [ -w "$LOCKDIR" ] || LOCKDIR=/tmp
+command -v flock >/dev/null 2>&1 || { echo "probe: flock is needed (FreeBSD: pkg install flock)" >&2; exit 69; }
 exec 9>"$LOCKDIR/drivecanary-probe.lock" || exit 70
 if ! flock -n 9; then echo "probe: another probe is still running" >&2; exit 75; fi
 N=0
@@ -55,6 +63,11 @@ awk -F'"' '
   /^ *\}/ { if (n != "" && t != "" && !e) print n, t; n = ""; t = ""; e = 0 }
 ' "$TMP/out" > "$TMP/devices"
 # overrides: "DEVICE TYPE" adds or re-types a device, "DEVICE skip" leaves it alone (HBAs, odd USB bridges)
+# FreeBSD names an NVMe disk nda0 or nvd0; smartctl wants its controller, nvme0 (as OPNsense's own plugin maps it)
+if [ "$OS" = FreeBSD ]; then
+  sed 's:^/dev/nda\([0-9][0-9]*\) .*:/dev/nvme\1 nvme:; s:^/dev/nvd\([0-9][0-9]*\) .*:/dev/nvme\1 nvme:' "$TMP/devices" \
+    | awk '!seen[$1]++' > "$TMP/devices.new" && mv "$TMP/devices.new" "$TMP/devices"
+fi
 if [ -f "$DEVICES_CONF" ]; then
   while read -r d t _; do
     case "$d" in ''|'#'*) continue ;; esac
@@ -75,7 +88,7 @@ if command -v zpool >/dev/null 2>&1; then
   frame zpool.status 60 zpool status -p
   frame zpool.status_json 60 zpool status -j -p  # OpenZFS 2.3+; a non-zero rc elsewhere is expected
 fi
-if command -v btrfs >/dev/null 2>&1; then
+if [ "$OS" = Linux ] && command -v btrfs >/dev/null 2>&1; then
   findmnt -t btrfs -n -o TARGET,UUID 2>/dev/null | awk '!seen[$2]++' > "$TMP/btrfs" || true
   frame btrfs.mounts 10 cat "$TMP/btrfs"
   while read -r target uuid; do
@@ -84,7 +97,7 @@ if command -v btrfs >/dev/null 2>&1; then
     frame "btrfs.scrub:$uuid" 30 btrfs scrub status "$target"
   done < "$TMP/btrfs"
 fi
-if [ -r /proc/mdstat ]; then
+if [ "$OS" = Linux ] && [ -r /proc/mdstat ]; then
   frame mdstat 5 cat /proc/mdstat
   for md in /sys/block/md*; do
     [ -e "$md" ] || continue
@@ -92,7 +105,18 @@ if [ -r /proc/mdstat ]; then
     frame "md.detail:$name" 30 mdadm --detail --export "/dev/$name"
   done
 fi
-frame lsblk 30 lsblk -J -b -o KNAME,TYPE,SIZE,ROTA,SERIAL,MODEL,WWN,TRAN,PKNAME,FSTYPE,MOUNTPOINT
-frame os.release 5 cat /etc/os-release
+if [ "$OS" = FreeBSD ]; then
+  frame geom.disks 30 geom disk list
+  # no os-release here: say the same thing in the same form
+  {
+    printf 'PRETTY_NAME="'
+    if command -v opnsense-version >/dev/null 2>&1; then printf '%s, ' "$(opnsense-version 2>/dev/null)"; fi
+    printf 'FreeBSD %s"\n' "$(freebsd-version 2>/dev/null || uname -r)"
+  } > "$TMP/osrel"
+  frame os.release 5 cat "$TMP/osrel"
+else
+  frame lsblk 30 lsblk -J -b -o KNAME,TYPE,SIZE,ROTA,SERIAL,MODEL,WWN,TRAN,PKNAME,FSTYPE,MOUNTPOINT
+  frame os.release 5 cat /etc/os-release
+fi
 printf 'PROBE-END version=%s frames=%s\n' "$VERSION" "$N"
 exit 0

@@ -95,6 +95,36 @@ SCAN_JSON = """{
 }
 """
 
+#: what `smartctl --scan-open -j` printed on the router: one device, and it is the last thing in the list
+FREEBSD_SCAN_JSON = """{
+  "json_format_version": [
+    1,
+    0
+  ],
+  "smartctl": {
+    "version": [
+      7,
+      5
+    ],
+    "platform_info": "FreeBSD 14.2-RELEASE-p11 amd64",
+    "argv": [
+      "smartctl",
+      "--scan-open",
+      "-j"
+    ],
+    "exit_status": 0
+  },
+  "devices": [
+    {
+      "name": "/dev/ada0",
+      "info_name": "/dev/ada0",
+      "type": "atacam",
+      "protocol": "ATA"
+    }
+  ]
+}
+"""
+
 ZPOOL_LIST = (
     "tank\tONLINE\t8001563222016\t3000000000000\t5001563222016\t4\t37\n"
     "backup\tDEGRADED\t4000000000000\t1000000000000\t3000000000000\t1\t25\n"
@@ -160,6 +190,37 @@ class ProbeEnv:
     agent_conf: Path
     agent_token: Path
     agent_state: Path
+    scan: Path
+    opnsense_config: Path
+
+    def become_opnsense(self) -> None:
+        """Shims that make the scripts take their FreeBSD paths: what `uname`, `sysctl`, `id` and the rest
+        answered on a real OPNsense 25.7 router (2026-09-28), one SATA SSD, UFS, no smartd."""
+        _shim(
+            self.shims / "uname",
+            'case "$1" in -s) echo FreeBSD ;; -r) echo 14.2-RELEASE-p11 ;; *) echo FreeBSD ;; esac\n',
+        )
+        _shim(self.shims / "id", 'case "$1" in -u) echo 0 ;; *) echo "uid=0(root) gid=0(wheel)" ;; esac\n')
+        _shim(self.shims / "sudo", 'echo "sudo must not be used when already root" >&2; exit 1\n')
+        _shim(
+            self.shims / "sysctl",
+            'case "$2" in\n'
+            "  kern.hostuuid) echo 00000000-0000-0000-0000-0000c0ffee00 ;;\n"
+            '  kern.boottime) echo "{ sec = 1789678450, usec = 19379 } Thu Sep 17 16:54:10 2026" ;;\n'
+            "  kern.disks) echo ada0 ;;\n"
+            "esac\n",
+        )
+        _shim(self.shims / "opnsense-version", 'echo "OPNsense 25.7.10_10 (amd64)"\n')
+        _shim(self.shims / "freebsd-version", "echo 14.2-RELEASE-p11\n")
+        _shim(self.shims / "geom", 'echo "Geom name: ada0"; echo "   descr: SAMSUNG SSD PM830 mSATA 32GB"\n')
+        for absent in ("zpool", "btrfs", "findmnt", "lsblk", "mdadm"):
+            _shim(self.shims / absent, f'echo "{absent}: must not be run on FreeBSD here" >&2; exit 99\n')
+        (self.shims / "zpool").unlink()  # present on FreeBSD, but this router has no pools
+        _shim(self.shims / "zpool", 'case "$1" in list) exit 0 ;; status) echo "no pools available"; exit 0 ;; esac\n')
+        self.scan.write_text(FREEBSD_SCAN_JSON)
+        self.opnsense_config.write_text(
+            "<opnsense>\n  <system>\n    <timezone>Europe/Amsterdam</timezone>\n  </system>\n</opnsense>\n"
+        )
 
     def run_agent(self, hub_url: str, token: str) -> subprocess.CompletedProcess[str]:
         """The real agent, as its timer would run it, against a hub at hub_url."""
@@ -199,11 +260,16 @@ def probe_env(tmp_path: Path) -> ProbeEnv:
     text = text.replace("DEVICES_CONF=/etc/drivecanary/devices.conf", f"DEVICES_CONF={devices_conf}", 1)
     # a lock of this test's own: the real one is system-wide, and one test's probe must not turn away another's
     text = text.replace("LOCKDIR=/run/lock", f"LOCKDIR={tmp_path}", 1)
+    text = text.replace("LOCKDIR=/var/run", f"LOCKDIR={tmp_path}", 1)
+    text = text.replace("DEVICES_CONF=/usr/local/etc/drivecanary/devices.conf", f"DEVICES_CONF={devices_conf}", 1)
     probe.write_text(text)
     text = (HOST_DIR / "gate").read_text()
     text = text.replace("PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", path_line, 1)
     text = text.replace("PROBE=/usr/local/lib/drivecanary/probe", f"PROBE={probe}", 1)
     text = text.replace("ATTRLOG_DIR=/var/lib/smartmontools", f"ATTRLOG_DIR={attrlog_dir}", 1)
+    text = text.replace("ATTRLOG_DIR=/var/db/smartmontools", f"ATTRLOG_DIR={tmp_path}/no-smartd-here", 1)
+    text = text.replace("/conf/config.xml", f"{tmp_path}/config.xml", 1)
+    text = text.replace("/var/db/zoneinfo", f"{tmp_path}/zoneinfo", 1)
     gate.write_text(text)
     agent = tmp_path / "agent"
     text = (HOST_DIR / "agent").read_text()
@@ -211,6 +277,9 @@ def probe_env(tmp_path: Path) -> ProbeEnv:
     text = text.replace("GATE=/usr/local/lib/drivecanary/gate", f"GATE={gate}", 1)
     text = text.replace("CONF=/etc/drivecanary/agent.conf", f"CONF={tmp_path}/agent.conf", 1)
     text = text.replace("TOKEN=/etc/drivecanary/agent.token", f"TOKEN={tmp_path}/agent.token", 1)
+    text = text.replace("CONF=/usr/local/etc/drivecanary/agent.conf", f"CONF={tmp_path}/agent.conf", 1)
+    text = text.replace("TOKEN=/usr/local/etc/drivecanary/agent.token", f"TOKEN={tmp_path}/agent.token", 1)
+    text = text.replace("STATE_DEFAULT=/var/db/drivecanary-agent", f"STATE_DEFAULT={tmp_path}/agent-state", 1)
     agent.write_text(text)
     for script in (probe, gate, agent):  # the gate runs the probe directly, as sudo would
         script.chmod(script.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
@@ -227,6 +296,7 @@ case "$last" in
   /dev/sdb) cat "{fx}/smart-fail2.json"; exit 216 ;;
   /dev/nvme0) cat "{fx}/smart-nvme.json"; exit 0 ;;
   /dev/sdz) cat "{fx}/smart-scsi.json"; exit 0 ;;
+  /dev/ada0|/dev/nvme1) cat "{fx}/smart-ata-full.json"; exit 0 ;;
 esac
 echo '{{"smartctl": {{"exit_status": 2, "messages": [{{"string": "no such device", "severity": "error"}}]}}}}'
 exit 2
@@ -267,4 +337,6 @@ exit 1
         agent_conf=tmp_path / "agent.conf",
         agent_token=tmp_path / "agent.token",
         agent_state=tmp_path / "agent-state",
+        scan=scan,
+        opnsense_config=tmp_path / "config.xml",
     )
