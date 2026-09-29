@@ -109,6 +109,8 @@ class Host(Base):
     gate_version: Mapped[int | None] = mapped_column(Integer)
     probe_version: Mapped[int | None] = mapped_column(Integer)
     agent_version: Mapped[int | None] = mapped_column(Integer)  # push hosts
+    smartd_conf: Mapped[str | None] = mapped_column(Text)  # the host's self-test schedule, in smartd.conf's words
+    smartd_state: Mapped[str | None] = mapped_column(String(32))  # active, inactive, cron: what runs that schedule
     block_devices: Mapped[str | None] = mapped_column(Text)  # the latest lsblk -J: how a pool's members are found
     os_release: Mapped[str | None] = mapped_column(String(128))
     smartctl_version: Mapped[str | None] = mapped_column(String(64))
@@ -250,6 +252,8 @@ class SmartRun(Base):
     ata_error_count: Mapped[int | None] = mapped_column(Integer)
     selftest_errors: Mapped[int | None] = mapped_column(Integer)
     selftest_last: Mapped[str | None] = mapped_column(String(128))
+    selftest_hours: Mapped[int | None] = mapped_column(Integer)  # the power-on hour the last one ran at
+    selftest_progress: Mapped[int | None] = mapped_column(Integer)  # percent done of one running now
     nvme_percentage_used: Mapped[int | None] = mapped_column(Integer)
     nvme_available_spare: Mapped[int | None] = mapped_column(Integer)
     nvme_spare_threshold: Mapped[int | None] = mapped_column(Integer)

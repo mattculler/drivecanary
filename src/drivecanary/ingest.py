@@ -35,6 +35,7 @@ from drivecanary.models import (
     Verdict,
 )
 from drivecanary.scrub import btrfs_found_errors
+from drivecanary.selftests import is_scheduled
 from drivecanary.smart import SmartReport, parse_report
 from drivecanary.status import judge_report
 from drivecanary.timeutil import from_epoch, utcnow, zone
@@ -106,6 +107,12 @@ def ingest_envelope(session: Session, *, host: Host, attempt: HostAttempt, env: 
     if ver:
         m = re.search(r"smartctl (\S+)", ver)
         host.smartctl_version = m.group(1) if m else ver[:64]
+    schedule = env.frame("smartd.conf")
+    if schedule is not None and schedule.rc == 0:
+        host.smartd_conf = schedule.text
+    runs_it = _first_line(env.frame("smartd.active"))
+    if runs_it:
+        host.smartd_state = runs_it[:32]
     lsblk = env.frame("lsblk")
     if lsblk is not None and lsblk.rc == 0 and lsblk.out:
         host.block_devices = lsblk.text
@@ -224,7 +231,8 @@ def _store_report(
     if dup is not None:
         res.warnings.append(f"{dev_name}: a reading at {collected_at:%Y-%m-%d %H:%M:%S} is already stored")
         return False
-    verdict, reasons = judge_report(report, cfg.status)
+    scheduled = is_scheduled(host.smartd_conf, dev_name, drive.serial_key)
+    verdict, reasons = judge_report(report, cfg.status, scheduled=scheduled)
     run = SmartRun(
         drive_id=drive.id,
         host_id=host.id,
@@ -240,6 +248,8 @@ def _store_report(
         ata_error_count=report.ata_error_count,
         selftest_errors=report.selftest_errors,
         selftest_last=report.selftest_last,
+        selftest_hours=report.selftest_hours,
+        selftest_progress=report.selftest_progress,
         endurance_used=report.endurance_used,
         scsi_grown_defects=report.scsi_grown_defects,
         scsi_uncorrected_errors=report.scsi_uncorrected_errors,

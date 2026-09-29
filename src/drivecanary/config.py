@@ -170,6 +170,16 @@ class StatusConfig(Section):
             "Endurance Indicator. 100 is the vendor's rated endurance (percent)."
         ),
     )
+    selftest_max_age_days: int = Field(
+        default=45,
+        ge=0,
+        description=(
+            "A drive whose host has a self-test schedule for it, and whose last self-test is older than this in "
+            "power-on time, is a WARN: the schedule has stopped working. With a short test every month, 45 "
+            "leaves room for one to be late. A drive that has never run a test is not counted. 0 turns it off "
+            "(days)."
+        ),
+    )
     error_log_recent_hours: int = Field(
         default=720,
         ge=0,

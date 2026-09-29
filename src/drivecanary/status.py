@@ -39,8 +39,9 @@ class _Verdict:
         return self.level, self.reasons
 
 
-def judge_report(r: SmartReport, cfg: StatusConfig) -> tuple[Verdict, list[str]]:
-    """The verdict on one `smartctl -j -x` reading."""
+def judge_report(r: SmartReport, cfg: StatusConfig, *, scheduled: bool = False) -> tuple[Verdict, list[str]]:
+    """The verdict on one `smartctl -j -x` reading. `scheduled`: the host has a self-test schedule for this
+    drive, so a last test that is long ago means the schedule has stopped."""
     if r.standby:
         return Verdict.SKIPPED, ["in standby, left asleep"]
     if not r.identified:
@@ -84,6 +85,9 @@ def judge_report(r: SmartReport, cfg: StatusConfig) -> tuple[Verdict, list[str]]
             v.warn(f"the self-test log has failed tests; the last one: {last}")
         else:
             v.warn(f"the self-test log has failed tests ({last or 'see the log'})")
+    age = r.selftest_age_hours
+    if scheduled and cfg.selftest_max_age_days and age is not None and age > cfg.selftest_max_age_days * 24:
+        v.warn(f"no self-test for {age // 24} days of power-on time, though one is scheduled every month")
     if r.endurance_used is not None and r.endurance_used >= cfg.nvme_percentage_used_warn:
         v.warn(f"{r.endurance_used}% of rated endurance used")
     if cfg.error_log_recent_hours:

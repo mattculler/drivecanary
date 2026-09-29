@@ -88,6 +88,12 @@ temp_warn_c = 55
 # endurance (percent).
 nvme_percentage_used_warn = 90
 
+# A drive whose host has a self-test schedule for it, and whose last self-test
+# is older than this in power-on time, is a WARN: the schedule has stopped
+# working. With a short test every month, 45 leaves room for one to be late. A
+# drive that has never run a test is not counted. 0 turns it off (days).
+selftest_max_age_days = 45
+
 # An entry in the ATA error log is a WARN while it is this recent, in the
 # drive's power-on hours, and is a read or addressing error (the drive) or a
 # CRC error (cable, backplane, controller). An aborted command is not counted.

@@ -104,6 +104,20 @@ def test_errors_in_the_log_warn_while_they_are_recent() -> None:
     assert judge_report(parse_report(doc), quiet)[0] == Verdict.OK
 
 
+def test_a_schedule_that_has_stopped_is_noticed() -> None:
+    doc = load_json("smart-ata-full.json")  # last test 134 power-on hours ago
+    assert judge_report(parse_report(doc), CFG, scheduled=True)[0] == Verdict.OK
+    doc["power_on_time"]["hours"] += 60 * 24
+    v, why = judge_report(parse_report(doc), CFG, scheduled=True)
+    assert v == Verdict.WARN and why == [
+        "no self-test for 65 days of power-on time, though one is scheduled every month"
+    ]
+    assert judge_report(parse_report(doc), CFG)[0] == Verdict.OK, "nothing schedules one: nothing is overdue"
+    assert judge_report(parse_report(doc), StatusConfig(selftest_max_age_days=0), scheduled=True)[0] == Verdict.OK
+    never = load_json("smart-nvme.json")
+    assert judge_report(parse_report(never), CFG, scheduled=True)[0] == Verdict.OK, "never tested: not counted"
+
+
 def test_judge_attrs_for_attrlog_lines() -> None:
     assert judge_attrs({5: 0, 197: 0, 194: 98784247840}, 32, CFG) == (Verdict.OK, [])
     v, why = judge_attrs({5: 12, 197: 0}, 30, CFG)
