@@ -65,6 +65,8 @@ identity smartctl knows (model family, firmware, WWN, capacity), the pools, and 
   `collect.py` — the ssh pull, parallel per host, one transaction per host.
 - `src/drivecanary/push.py` — what a push agent delivers, stored the same way; `ingest_api.py` — the
   listener it delivers to, a service of its own so the page stays read-only.
+- `src/drivecanary/pools.py` — which drives a pool is made of: what its status names, found in what the
+  host reports.
 - `src/drivecanary/attrlog.py` — smartd attribute logs, whole files or chunks past a cursor.
 - `src/drivecanary/queries.py` — what the page and `drivecanary status` show; `web/` — the page.
 - `deploy/` — the VM install (`install.sh`, `update.sh`, `backup.sh`, units) and `deploy/host/` — what goes

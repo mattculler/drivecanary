@@ -58,6 +58,14 @@ What the hub's key can do on a host: run the gate. The gate runs the probe throu
 and any other command with exit 64. A key that is *not* restricted shows up as `key_not_restricted` on the
 host's row and is not used again until it is.
 
+`install-host.sh` is also how a host gets a newer probe, gate or agent. A host's page says which versions it
+runs and says so when the checkout on the hub has newer ones. Nothing on the hub needs doing again after a
+reinstall: the host says what it runs with its next report.
+
+A host's page is at `/host/NAME` (`http://hub:8080/host/atlas`), so another site can link to it knowing only
+the name. Its address can be changed with `drivecanary host set NAME --address atlas.domain`; for a pull host
+the pinned host key moves to the new address with it.
+
 HBAs and odd USB bridges: `/etc/drivecanary/devices.conf` on the host overrides a device's `-d` type or
 skips it (`deploy/host/devices.conf.example`).
 
