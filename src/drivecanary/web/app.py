@@ -22,7 +22,7 @@ from drivecanary.db import make_engine, sessionmaker_for
 from drivecanary.models import AttrlogCursor, CollectionRun, Drive, Host, HostAttempt, Pool, Verdict
 from drivecanary.pools import pool_members
 from drivecanary.scrub import summarize as summarize_scrub
-from drivecanary.smart import ATTR_LABELS
+from drivecanary.smart import ATTR_LABELS, ERROR_KINDS, UNKNOWN_NAMES, SmartReport
 from drivecanary.timeutil import hours_ago, utcnow
 
 TEMPLATES = Path(__file__).parent / "templates"
@@ -73,35 +73,48 @@ def fmt_hours(h: int | None) -> str:
     return f"{h:,} h ({h / 24 / 365.25:.1f} y)" if h >= 8760 else f"{h:,} h"
 
 
-def metrics_for(drive: Drive, attr_ids: set[int]) -> list[dict[str, str]]:
-    """Which trend charts a drive page shows: the temperature and hours for every kind, then the counters
-    that matter for its kind and that it actually reports."""
+COUNTERS = (5, 187, 188, 197, 198, 199, 193)
+#: wear attributes by id, for a drive nothing but an attribute log has been read from: no names to go by
+WEAR_IDS = (177, 231, 202)
+
+
+def attr_names(report: SmartReport | None) -> dict[int, str]:
+    """What each attribute is called on this drive, as smartctl's drive database has it."""
+    return {a.id: a.name for a in report.attrs if a.name not in UNKNOWN_NAMES} if report else {}
+
+
+def metrics_for(drive: Drive, attr_ids: set[int], report: SmartReport | None = None) -> list[dict[str, str]]:
+    """Which trend charts a drive page shows: the temperature and hours for every kind, then what says how
+    worn it is, then the counters that matter for its kind and that it actually reports."""
+    names = attr_names(report)
+
+    def label(attr_id: int) -> str:
+        return f"{names.get(attr_id) or ATTR_LABELS.get(attr_id, 'Attribute')} ({attr_id})"
+
     out = [
         {"metric": "temp", "label": "Temperature", "unit": "°C"},
         {"metric": "poh", "label": "Power-on hours", "unit": "h"},
     ]
     if drive.kind == "nvme":
         for key in ("nvme_percentage_used", "nvme_available_spare", "nvme_media_errors", "nvme_err_log_entries"):
-            label, unit = queries.RUN_METRICS[key]
-            out.append({"metric": key, "label": label, "unit": unit})
+            title, unit = queries.RUN_METRICS[key]
+            out.append({"metric": key, "label": title, "unit": unit})
     elif (drive.protocol or "").upper() == "SCSI":
-        label, unit = queries.RUN_METRICS["scsi_grown_defects"]
-        out.append({"metric": "scsi_grown_defects", "label": label, "unit": unit})
+        title, unit = queries.RUN_METRICS["scsi_grown_defects"]
+        out.append({"metric": "scsi_grown_defects", "label": title, "unit": unit})
     else:
-        # wear, for solid state: the normalized value counts down from 100 whatever the vendor counts in the raw
-        for attr_id in (177, 231, 233, 202):
+        if report is not None and report.endurance_used is not None:
+            out.append({"metric": "endurance_used", "label": "Endurance used (the standard figure)", "unit": "%"})
+        # the vendor's own: the normalized value counts down from 100 whatever is counted in the raw
+        wear = [a.id for a in report.wear_attrs] if report else [i for i in WEAR_IDS if i in attr_ids]
+        for attr_id in wear:
             if attr_id in attr_ids:
-                label = f"{ATTR_LABELS.get(attr_id, 'Attribute')} ({attr_id}), normalized"
-                out.append({"metric": f"attr:{attr_id}:value", "label": label, "unit": ""})
-        for attr_id in (5, 187, 188, 197, 198, 199, 193):
-            if attr_id in attr_ids:
-                out.append(
-                    {
-                        "metric": f"attr:{attr_id}",
-                        "label": f"{ATTR_LABELS.get(attr_id, 'Attribute')} ({attr_id})",
-                        "unit": "",
-                    }
-                )
+                out.append({"metric": f"attr:{attr_id}:value", "label": f"{label(attr_id)}, normalized", "unit": ""})
+        for attr_id in COUNTERS:
+            if attr_id in attr_ids and attr_id not in wear:
+                out.append({"metric": f"attr:{attr_id}", "label": label(attr_id), "unit": ""})
+        if report is not None and report.ata_error_count:
+            out.append({"metric": "ata_errors", "label": "Error log entries", "unit": ""})
     return out
 
 
@@ -158,6 +171,10 @@ def create_app(config: Config | None = None) -> FastAPI:
         verdict = Verdict(latest.verdict) if latest else Verdict.UNKNOWN
         if age is not None and age > cfg.collect.stale_after_hours and verdict != Verdict.FAIL:
             verdict = Verdict.STALE
+        report = queries.latest_report(db, drive.id)
+        logged: dict[str, int] = {}
+        for _, kind in report.error_entries if report else []:
+            logged[kind] = logged.get(kind, 0) + 1
         return page(
             request,
             "drive.html",
@@ -165,10 +182,14 @@ def create_app(config: Config | None = None) -> FastAPI:
             latest=latest,
             verdict=verdict,
             attrs=attrs,
+            report=report,
+            names=attr_names(report),
+            logged=logged,
+            error_kinds=ERROR_KINDS,
             runs=runs,
             sightings=queries.drive_sightings(db, drive.id),
             span=(first, last, count),
-            metrics=metrics_for(drive, {a.attr_id for a in attrs}),
+            metrics=metrics_for(drive, {a.attr_id for a in attrs}, report),
             window=window if window in ("7d", "30d", "90d", "1y", "all") else "30d",
         )
 

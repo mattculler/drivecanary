@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from drivecanary.collect import SshResult, collect, write_ssh_material
 from drivecanary.config import Config
-from drivecanary.models import Host, Pool
+from drivecanary.models import Drive, Host, Pool
 from drivecanary.web.app import create_app, fmt_ago, fmt_bytes
 from tests.conftest import ProbeEnv
 
@@ -111,6 +111,14 @@ def test_drive_page_and_series(cfg: Config, factory: sessionmaker[Session], prob
     assert len(pts) == 20 and pts[0][1] == 32.0 and pts[0][0] < pts[-1][0]
     r = client.get(f"/api/drives/{ids[0]}/series?metric=temp&window=7d")
     assert r.status_code == 200 and r.json()["points"] == []  # 2023 data is outside a 7-day window
+    with factory() as s:
+        failing = s.scalar(select(Drive).where(Drive.model == "Hitachi HDS721050DLE630"))
+        assert failing is not None
+    page = client.get(f"/drive/{failing.id}").text
+    assert "<dt>error log</dt><dd>56 in all; of the 5 the drive still holds:" in page
+    assert "<b>5</b> the drive could not read or find a sector" in page
+    assert "last self-test: Short offline, Completed without error, " in page and "power-on hours ago" in page
+    assert "Reallocated_Sector_Ct" in page and "unknown to smartctl" not in page
     r = client.get(f"/drive/{ids[1]}")
     assert r.status_code == 200 and 'data-metric="nvme_percentage_used"' in r.text
     assert client.get(f"/api/drives/{ids[1]}/series?metric=bogus").status_code == 400
@@ -147,12 +155,29 @@ def test_the_summary_counts_every_host_however_it_is_monitored(
 
 
 def test_a_sata_ssd_gets_its_wear_charted() -> None:
-    from drivecanary.models import Drive
-    from drivecanary.web.app import metrics_for
+    from drivecanary.smart import parse_report
+    from drivecanary.web.app import attr_names, metrics_for
+    from tests.test_smart import wd_blue
 
     ssd = Drive(model_key="x", serial_key="y", protocol="ATA", rotation_rate=0)
-    metrics = [m["metric"] for m in metrics_for(ssd, {5, 9, 177, 187, 241})]
+    # nothing but an attribute log read: ids are all there is to go by
+    metrics = [m["metric"] for m in metrics_for(ssd, {5, 9, 177, 187, 233, 241})]
     assert metrics == ["temp", "poh", "attr:177:value", "attr:5", "attr:187"]
+    # smartctl has read it: its names decide, and 233 is not wear on this drive
+    report = parse_report(wd_blue())
+    found = metrics_for(ssd, {a.id for a in report.attrs}, report)
+    assert [m["metric"] for m in found] == ["temp", "poh", "attr:230:value", "attr:5"]
+    assert found[2]["label"] == "Media_Wearout_Indicator (230), normalized"
+    assert attr_names(report)[173] == "Average_PE_Cycles_TLC" and 244 not in attr_names(report)
+    report.endurance_used, report.ata_error_count = 4, 2
+    assert [m["metric"] for m in metrics_for(ssd, {5, 230}, report)] == [
+        "temp",
+        "poh",
+        "endurance_used",
+        "attr:230:value",
+        "attr:5",
+        "ata_errors",
+    ]
 
 
 def test_formatters() -> None:

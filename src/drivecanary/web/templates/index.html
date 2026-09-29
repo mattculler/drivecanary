@@ -25,7 +25,7 @@
   <th class="num" title="188 Command_Timeout">timeout</th>
   <th class="num" title="197 Current_Pending_Sector">pending</th>
   <th class="num" title="198 Offline_Uncorrectable">offline</th>
-  <th title="NVMe: endurance used / available spare / media errors">nvme</th>
+  <th title="solid state: rated endurance used. NVMe adds: / available spare / media errors">wear</th>
   <th>read</th><th class="wrap">why</th>
 </tr>
 {% for d in ov.drives %}
@@ -39,7 +39,7 @@
   <td class="num">{{ r.temp_c if r and r.temp_c is not none else '' }}</td>
   <td class="num">{{ '{:,}'.format(r.power_on_hours) if r and r.power_on_hours is not none else '' }}</td>
   {% for a in (5, 187, 188, 197, 198) %}<td class="num">{{ d.counters[a] if a in d.counters else '' }}</td>{% endfor %}
-  <td>{% if r and r.nvme_percentage_used is not none %}{{ r.nvme_percentage_used }}% / {{ r.nvme_available_spare }}% / {{ r.nvme_media_errors }}{% endif %}</td>
+  <td>{% if r and r.nvme_percentage_used is not none %}{{ r.nvme_percentage_used }}% / {{ r.nvme_available_spare }}% / {{ r.nvme_media_errors }}{% elif r and r.endurance_used is not none %}{{ r.endurance_used }}%{% endif %}</td>
   <td class="muted" title="{{ r.collected_at|dt if r else '' }}">{{ r.collected_at|ago(now) if r else 'never' }}</td>
   <td class="why">{{ d.reasons|join('; ') }}</td>
 </tr>

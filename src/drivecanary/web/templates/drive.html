@@ -19,12 +19,21 @@
     {% if latest.temp_c is not none %}{{ latest.temp_c }} °C · {% endif %}{{ latest.power_on_hours|hours }}{% if latest.power_cycles is not none %} · {{ latest.power_cycles }} power cycles{% endif %}
     {% if latest.passed is not none %} · SMART {{ 'PASSED' if latest.passed else 'FAILED' }}{% endif %}
     {% if latest.exit_status is not none %} · smartctl exit {{ latest.exit_status }}{% endif %}
+    {% if latest.endurance_used is not none %} · {{ latest.endurance_used }}% of rated endurance used{% endif %}
     {% if latest.ata_error_count is not none %} · {{ latest.ata_error_count }} error log entries{% endif %}
-    {% if latest.selftest_last %} · last self-test: {{ latest.selftest_last }}{% endif %}
+    {% if latest.selftest_last %} · last self-test: {% if report and report.selftest_type %}{{ report.selftest_type }}, {% endif %}{{ latest.selftest_last }}{% if report and report.selftest_hours is not none and report.power_on_hours %}, {{ '{:,}'.format([report.power_on_hours - report.selftest_hours, 0]|max) }} power-on hours ago{% endif %}{% endif %}
     {% if latest.nvme_percentage_used is not none %} · {{ latest.nvme_percentage_used }}% used, spare {{ latest.nvme_available_spare }}% (threshold {{ latest.nvme_spare_threshold }}%), {{ latest.nvme_media_errors }} media errors, {{ latest.nvme_unsafe_shutdowns }} unsafe shutdowns{% endif %}
     {% if latest.scsi_grown_defects is not none %} · {{ latest.scsi_grown_defects }} grown defects{% endif %}
     {% if latest.messages %}<div class="why">smartctl: {{ latest.messages }}</div>{% endif %}
   </dd>
+  {% endif %}
+  {% if logged %}
+  <dt>error log</dt><dd>{{ latest.ata_error_count }} in all; of the {{ logged.values()|sum }} the drive still holds:
+    <ul class="plainlist">{% for kind, n in logged.items() %}<li><b>{{ n }}</b> {{ error_kinds[kind] }}</li>{% endfor %}</ul></dd>
+  {% endif %}
+  {% if report and report.in_database is false %}
+  <dt>names</dt><dd class="muted">This model is not in the drive database of the smartctl that read it, so its attributes have generic
+    names and some go unnamed. A newer database may know it: <code>update-smart-drivedb</code> on the host, or a newer smartmontools.</dd>
   {% endif %}
 </dl>
 
@@ -39,7 +48,7 @@
 <tr><th class="num">id</th><th>name</th><th class="num">value</th><th class="num">worst</th><th class="num">thresh</th><th class="num">raw</th><th>as printed</th><th>failed</th></tr>
 {% for a in attrs %}
 <tr{% if a.when_failed %} class="r-{{ 'fail' if a.when_failed == 'now' else 'warn' }}"{% endif %}>
-  <td class="num">{{ a.attr_id }}</td><td>{{ attr_label(a.attr_id) }}{% if a.prefail %} <span class="muted" title="prefail attribute">P</span>{% endif %}</td>
+  <td class="num">{{ a.attr_id }}</td><td>{% if names.get(a.attr_id) %}{{ names[a.attr_id] }}{% elif report %}<span class="muted">unknown to smartctl</span>{% else %}{{ attr_label(a.attr_id) }}{% endif %}{% if a.prefail %} <span class="muted" title="prefail attribute">P</span>{% endif %}</td>
   <td class="num">{{ a.value if a.value is not none else '' }}</td><td class="num">{{ a.worst if a.worst is not none else '' }}</td><td class="num">{{ a.thresh if a.thresh is not none else '' }}</td>
   <td class="num">{{ '{:,}'.format(a.raw) }}</td><td class="muted">{{ a.raw_str or '' }}</td><td>{{ a.when_failed or '' }}</td>
 </tr>
