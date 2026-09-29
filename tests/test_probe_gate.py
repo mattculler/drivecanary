@@ -56,6 +56,7 @@ def test_collect_envelope_ingests(probe_env: ProbeEnv, session: Session, cfg: Co
     names = [f.name for f in env.frames]
     assert "smartctl.scan" in names and "smartctl.dev:/dev/sda:sat" in names and "smartctl.dev:/dev/nvme0:nvme" in names
     assert "smartctl.dev:/dev/sr0:scsi" not in names, "a device with open_error is left alone"
+    assert len(names) == len(set(names)), "every device is read once"
     assert "zpool.list" in names and "btrfs.stats:1234-uuid" in names and "lsblk" in names
     assert env.frame("probe.exit") is not None and env.frame("probe.exit").rc == 0
     attr = env.prefixed("attrlog:")[0]
@@ -152,6 +153,18 @@ def test_a_second_probe_is_turned_away_while_one_runs(probe_env: ProbeEnv) -> No
     assert "LOCKDIR=$TMP" not in (HOST_DIR / "probe").read_text(), (
         "a lock in the run's own directory is never contended"
     )
+
+
+def test_the_last_device_in_a_scan_is_read_once(probe_env: ProbeEnv) -> None:
+    """The brace that closes the whole scan printed the last device again, unless that device had failed to
+    open: atlas's last drive was read twice every collection and the second reading thrown away."""
+    scan = probe_env.shims.parent / "scan.json"
+    text = scan.read_text()
+    cut = text.index('    {\n      "name": "/dev/sr0"')
+    scan.write_text(text[:cut].rstrip().rstrip(",") + "\n  ]\n}\n")
+    names = [f.name for f in parse_envelope(probe_env.run_gate("drivecanary-collect").stdout).frames]
+    devices = [n for n in names if n.startswith("smartctl.dev:")]
+    assert devices == ["smartctl.dev:/dev/sda:sat", "smartctl.dev:/dev/sdb:sat", "smartctl.dev:/dev/nvme0:nvme"]
 
 
 def test_devices_conf_skips_and_adds(probe_env: ProbeEnv) -> None:

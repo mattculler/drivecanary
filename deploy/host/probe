@@ -52,7 +52,7 @@ awk -F'"' '
   /"name":/ { n = $4 }
   /"type":/ { t = $4 }
   /"open_error":/ { e = 1 }
-  /^ *\}/ { if (n != "" && t != "" && !e) print n, t }
+  /^ *\}/ { if (n != "" && t != "" && !e) print n, t; n = ""; t = ""; e = 0 }
 ' "$TMP/out" > "$TMP/devices"
 # overrides: "DEVICE TYPE" adds or re-types a device, "DEVICE skip" leaves it alone (HBAs, odd USB bridges)
 if [ -f "$DEVICES_CONF" ]; then
