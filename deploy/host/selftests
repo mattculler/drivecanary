@@ -1,0 +1,185 @@
+#!/bin/sh
+# drivecanary selftests: give every drive on this host a date of its own for its self-tests.
+#
+#   selftests apply     write the schedule and have it take effect
+#   selftests remove    take the schedule out again
+#   selftests show      print the schedule this would write, and change nothing
+#
+# A short test every month and a long one every year. smartd starts a test in the hour its schedule names
+# and asks only whether that same drive is already testing: it knows nothing of pools or scrubs. So the
+# tests are kept apart by the calendar:
+#   short  the 17th of every month, each drive at an hour of its own (01:00, 02:00, ...): minutes long
+#   long   the 19th or the 24th of a month of the drive's own, at 01:00: the two are five days apart, and a
+#          long test of 20 TB is a day and a half
+# and away from the scrubs that run by the calendar: Debian's md check is the first Sunday of the month, ZFS's
+# scrub the second, so nothing here starts before the 17th. A scrub started by hand is not something a
+# calendar can step around.
+#
+# A drive keeps the dates it was first given (they are written down in the state file), so adding a drive
+# moves nobody else's. Drives are named by /dev/disk/by-id, which does not change when sda and sdb swap.
+# NVMe drives are left to DEVICESCAN: smartd does not schedule their self-tests before smartmontools 7.5.
+#
+# Linux: the schedule is a marked block of /etc/smartd.conf, put before DEVICESCAN, each line with
+# DEVICESCAN's own directives and a -s of its own; the file as it was is kept beside it, once. The new file
+# is tried with `smartd -q showtests` before it replaces the old one.
+# FreeBSD (OPNsense): there is no smartd running, so cron starts the tests (/usr/local/etc/cron.d), and the
+# schedule is written in smartd.conf's words to selftests.conf for the hub to read.
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+LC_ALL=C
+export PATH LC_ALL
+OS=$(uname -s)
+CONF=${DRIVECANARY_SMARTD_CONF:-/etc/smartd.conf}
+STATE=${DRIVECANARY_SELFTEST_STATE:-/etc/drivecanary/selftests}
+BYID=${DRIVECANARY_BYID:-/dev/disk/by-id}
+CRON=${DRIVECANARY_SELFTEST_CRON:-/usr/local/etc/cron.d/drivecanary-selftests}
+case "$OS" in FreeBSD)
+  CONF=${DRIVECANARY_SMARTD_CONF:-/usr/local/etc/drivecanary/selftests.conf}
+  STATE=${DRIVECANARY_SELFTEST_STATE:-/usr/local/etc/drivecanary/selftests} ;;
+esac
+BEGIN='# BEGIN drivecanary self-tests (deploy/host/selftests wrote this; `selftests remove` takes it out)'
+END='# END drivecanary self-tests'
+SHORT_DAY=17
+LONG_HOUR=01
+# every month's 19th and 24th, in an order that keeps the first few drives months apart
+LONG_SLOTS="01/19 07/19 04/19 10/19 02/24 08/24 05/24 11/24 03/19 09/19 06/19 12/19 01/24 07/24 04/24 10/24 02/19 08/19 05/19 11/19 03/24 09/24 06/24 12/24"
+SHORT_HOURS="01 02 03 04 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19 20 21 22 23"
+umask 022
+case "${1:-}" in ''|help|--help|-h)
+  echo "usage: $0 apply|remove|show  -- a monthly short and a yearly long self-test for every drive of this host, each on a date of its own"
+  exit 0 ;;
+esac
+ACTION=$1
+TMP=$(mktemp -d "${TMPDIR:-/tmp}/drivecanary-selftests.XXXXXX") || exit 70
+trap 'rm -rf "$TMP"' EXIT
+
+talks() { # talks DEVICE: smartctl can open it and it answers
+  smartctl -i "$1" >/dev/null 2>&1
+  rc=$?
+  [ $((rc & 3)) -eq 0 ]
+}
+
+drives() { # one "ID DEVICE" per drive that can be given a test
+  if [ "$OS" = FreeBSD ]; then
+    for d in $(sysctl -n kern.disks); do
+      case "$d" in ada[0-9]*|da[0-9]*) talks "/dev/$d" && echo "$d /dev/$d" ;; esac
+    done
+    return
+  fi
+  for link in "$BYID"/ata-* "$BYID"/scsi-*; do
+    [ -e "$link" ] || continue
+    case "${link##*/}" in *-part[0-9]*) continue ;; esac
+    echo "$(readlink -f "$link") $link"
+  done | sort | awk '!seen[$1]++ { print $2 }' | while read -r link; do
+    talks "$link" && echo "${link##*/} $link"
+  done
+}
+
+free_of() { # free_of COLUMN CANDIDATES...: the first candidate no drive has yet
+  col=$1; shift
+  taken=" $(awk -v c="$col" '{ print $c }' "$TMP/state" | tr '\n' ' ')"
+  for candidate; do
+    case "$taken" in *" $candidate "*) ;; *) echo "$candidate"; return 0 ;; esac
+  done
+  return 1
+}
+
+plan() { # $TMP/state: what every drive has, the ones here given theirs; $TMP/lines: the schedule
+  : > "$TMP/lines"
+  if [ -f "$STATE" ]; then grep -v '^#' "$STATE" > "$TMP/state"; else : > "$TMP/state"; fi
+  drives > "$TMP/drives"
+  while read -r id dev; do
+    have=$(awk -v id="$id" '$1 == id { print $2, $3 }' "$TMP/state")
+    if [ -z "$have" ]; then
+      # shellcheck disable=SC2086
+      long=$(free_of 2 $LONG_SLOTS) && short=$(free_of 3 $SHORT_HOURS) || {
+        echo "selftests: more drives than dates (24 long, 23 short): $id has none; schedule it by hand" >&2
+        continue
+      }
+      echo "$id $long $short" >> "$TMP/state"
+      have="$long $short"
+    fi
+    long=${have% *}
+    short=${have#* }
+    printf '%s %s -s (S/../%s/./%s|L/%s/./%s)\n' "$dev" "$OPTIONS" "$SHORT_DAY" "$short" "$long" "$LONG_HOUR" \
+      | tr -s ' ' >> "$TMP/lines"
+  done < "$TMP/drives"
+}
+
+without_block() { # FILE: the file, less the block between the markers
+  awk -v b="$BEGIN" -v e="$END" '$0 == b { skip = 1; next } $0 == e { skip = 0; next } !skip' "$1"
+}
+
+keep_state() {
+  mkdir -p "$(dirname "$STATE")"
+  { echo "# drive, its long test's month/day, its short test's hour (deploy/host/selftests keeps this)"; cat "$TMP/state"; } > "$STATE"
+}
+
+if [ "$OS" = FreeBSD ]; then
+  OPTIONS=""
+  case "$ACTION" in
+    show) plan; cat "$TMP/lines" ;;
+    remove) rm -f "$CONF" "$CRON"; echo "selftests: removed" ;;
+    apply)
+      plan
+      [ -s "$TMP/lines" ] || { echo "selftests: no drive here can be given a test" >&2; exit 1; }
+      keep_state
+      mkdir -p "$(dirname "$CONF")" "$(dirname "$CRON")"
+      { echo "# when cron starts this host's self-tests, in smartd.conf's words, for the hub to read"; cat "$TMP/lines"; } > "$CONF"
+      {
+        echo "# drivecanary: self-tests (deploy/host/selftests wrote this; there is no smartd here to start them)"
+        echo "SHELL=/bin/sh"
+        echo "PATH=/etc:/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin"
+        while read -r id dev; do
+          have=$(awk -v id="$id" '$1 == id { print $2, $3 }' "$TMP/state")
+          long=${have% *}; short=${have#* }
+          echo "0	$short	$SHORT_DAY	*	*	root	smartctl -t short $dev 2>&1 | logger -t drivecanary-selftest"
+          echo "0	$LONG_HOUR	${long#*/}	${long%/*}	*	root	smartctl -t long $dev 2>&1 | logger -t drivecanary-selftest"
+        done < "$TMP/drives"
+      } > "$CRON"
+      chmod 0644 "$CONF" "$CRON"
+      cat "$TMP/lines" ;;
+    *) echo "selftests: apply, remove or show" >&2; exit 64 ;;
+  esac
+  exit 0
+fi
+
+[ -f "$CONF" ] || { echo "selftests: $CONF is not there: is smartmontools installed?" >&2; exit 1; }
+scan=$(grep -E '^[[:space:]]*DEVICESCAN([[:space:]]|$)' "$CONF" | head -n 1)
+if [ -z "$scan" ]; then
+  echo "selftests: $CONF has no DEVICESCAN line, so it is yours, not the distribution's; it is left alone." >&2
+  echo "selftests: what would have been written (selftests show prints it) can be added by hand." >&2
+  [ "$ACTION" = show ] || exit 1
+fi
+# the directives DEVICESCAN has, which every drive keeps, less a schedule if it had one
+OPTIONS=$(printf '%s\n' "$scan" | sed -E 's/^[[:space:]]*DEVICESCAN[[:space:]]*//; s/(^|[[:space:]])-s[[:space:]]+[^[:space:]]+//')
+case "$ACTION" in
+  show) plan; cat "$TMP/lines"; exit 0 ;;
+  remove)
+    without_block "$CONF" > "$TMP/conf"
+    if cmp -s "$TMP/conf" "$CONF"; then echo "selftests: nothing of drivecanary's is in $CONF"; exit 0; fi ;;
+  apply)
+    plan
+    [ -s "$TMP/lines" ] || { echo "selftests: no drive here can be given a test" >&2; exit 1; }
+    without_block "$CONF" | awk -v b="$BEGIN" -v e="$END" -v lines="$TMP/lines" '
+      !done && /^[[:space:]]*DEVICESCAN([[:space:]]|$)/ {
+        print b
+        while ((getline l < lines) > 0) print l
+        print e
+        done = 1
+      }
+      { print }' > "$TMP/conf" ;;
+  *) echo "selftests: apply, remove or show" >&2; exit 64 ;;
+esac
+# smartd reads it first, where a mistake costs nothing
+if ! smartd -q showtests -c "$TMP/conf" > "$TMP/showtests" 2>&1; then
+  echo "selftests: smartd does not accept the new $CONF; nothing was changed. It said:" >&2
+  tail -n 15 "$TMP/showtests" >&2
+  exit 1
+fi
+[ -f "$CONF.before-drivecanary" ] || cp -p "$CONF" "$CONF.before-drivecanary"
+cat "$TMP/conf" > "$CONF"
+[ "$ACTION" = apply ] && keep_state
+systemctl restart smartd 2>/dev/null || systemctl restart smartmontools 2>/dev/null \
+  || echo "selftests: $CONF is written, but smartd could not be restarted: do that by hand" >&2
+if [ "$ACTION" = apply ]; then cat "$TMP/lines"; else echo "selftests: removed"; fi
+exit 0

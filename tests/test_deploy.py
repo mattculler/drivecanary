@@ -66,7 +66,7 @@ def test_web_cannot_read_the_collectors_key() -> None:
 
 def test_every_script_answers_help_dash_dash_help_and_dash_h_alike() -> None:
     scripts = [DEPLOY / n for n in ("install.sh", "update.sh", "backup.sh", "drivecanary-cli")]
-    scripts += [DEPLOY / "host" / n for n in ("install-host.sh", "probe", "gate", "agent")]
+    scripts += [DEPLOY / "host" / n for n in ("install-host.sh", "probe", "gate", "agent", "selftests")]
     for script in scripts:
         for word in ("help", "--help", "-h"):
             cp = subprocess.run(["sh", str(script), word], capture_output=True, text=True, timeout=30, check=False)
@@ -86,7 +86,7 @@ def test_host_side_files_are_what_the_design_says() -> None:
     assert "set -f" in gate and 'sudo -n "$PROBE"' in gate
     probe = (DEPLOY / "host" / "probe").read_text()
     assert "flock -n" in probe and "timeout -k 5" in probe and "standby,$STANDBY_EXIT" in probe
-    for f in ("probe", "gate", "agent", "install-host.sh"):
+    for f in ("probe", "gate", "agent", "selftests", "install-host.sh"):
         assert (DEPLOY / "host" / f).stat().st_mode & 0o111, f
 
 

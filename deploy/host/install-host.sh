@@ -32,14 +32,19 @@
 #   --hub-url   push: where the hub's ingest listens, e.g. http://10.100.100.50:8081
 #   --token     push: the host's token, as `drivecanary host add HOST --transport push` printed it
 #   --target    what to ssh to (default HOST; your ssh config decides the user)
+#   --self-tests     also give every drive a short self-test each month and a long one each year, each on a date of
+#                    its own (deploy/host/selftests says how they are kept apart). On Debian that is a marked block
+#                    of /etc/smartd.conf; the file as it was is kept beside it.
+#   --no-self-tests  take that schedule out again
+# Without either, whatever self-test schedule the host has is left as it is.
 set -euo pipefail
 usage() {
-  echo "usage: $0 HOST --hub-ip IP --hub-key FILE-OR-KEY [--target SSH-DEST]   (pull: the hub reaches the host over ssh)"
-  echo "       $0 HOST --push --hub-url URL --token TOKEN [--target SSH-DEST]  (push: the host's agent reports to the hub)"
+  echo "usage: $0 HOST --hub-ip IP --hub-key FILE-OR-KEY [--target SSH-DEST] [--self-tests|--no-self-tests]   (pull: the hub reaches the host over ssh)"
+  echo "       $0 HOST --push --hub-url URL --token TOKEN [--target SSH-DEST] [--self-tests|--no-self-tests]  (push: the host's agent reports to the hub)"
 }
 case "${1:-}" in ''|help|--help|-h) usage; exit 0 ;; esac
 HOST=$1; shift
-MODE=pull; HUB_IP=""; HUB_KEY=""; HUB_URL=""; TOKEN=""; TARGET=$HOST
+MODE=pull; HUB_IP=""; HUB_KEY=""; HUB_URL=""; TOKEN=""; TARGET=$HOST; SELFTESTS=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --push) MODE=push; shift ;;
@@ -48,13 +53,15 @@ while [ $# -gt 0 ]; do
     --hub-url) HUB_URL=${2%/}; shift 2 ;;
     --token) TOKEN=$2; shift 2 ;;
     --target) TARGET=$2; shift 2 ;;
+    --self-tests) SELFTESTS=apply; shift ;;
+    --no-self-tests) SELFTESTS=remove; shift ;;
     *) usage >&2; exit 64 ;;
   esac
 done
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
-FILES=(probe gate sudoers)
+FILES=(probe gate sudoers selftests)
 if [ "$MODE" = pull ]; then
   [ -n "$HUB_IP" ] && [ -n "$HUB_KEY" ] || { usage >&2; exit 64; }
   [ -f "$HUB_KEY" ] && HUB_KEY=$(cat "$HUB_KEY")
@@ -73,6 +80,7 @@ for f in "${FILES[@]}"; do
   cp "$HERE/$f" "$WORK/"
 done
 printf '%s\n' "$MODE" > "$WORK/mode"
+printf '%s\n' "$SELFTESTS" > "$WORK/selftests.do"
 cat > "$WORK/remote.sh" <<'REMOTE'
 set -eu
 T=$(cd "$(dirname "$0")" && pwd)
@@ -117,6 +125,11 @@ if [ "$(uname -s)" = FreeBSD ]; then
   echo "== $CRON: hourly at minute $MINUTE, and two minutes after a boot"
   echo "== self-test: probe (first frame)"
   "$LIB/probe" | head -1
+  install -o 0 -g 0 -m 0755 "$T/selftests" "$LIB/selftests"
+  if [ -n "$(cat "$T/selftests.do")" ]; then
+    echo "== self-tests: $(cat "$T/selftests.do")"
+    "$LIB/selftests" "$(cat "$T/selftests.do")"
+  fi
   echo "== first report to $(sed -n 's/^HUB_URL=//p' "$ETC/agent.conf")"
   if "$LIB/agent"; then
     echo "== reported"
@@ -144,6 +157,11 @@ install -o root -g root -m 0755 "$T/probe" "$LIB/probe"
 install -o root -g root -m 0755 "$T/gate" "$LIB/gate"
 visudo -c -q -f "$T/sudoers"
 install -o root -g root -m 0440 "$T/sudoers" /etc/sudoers.d/drivecanary
+install -o root -g root -m 0755 "$T/selftests" "$LIB/selftests"
+if [ -n "$(cat "$T/selftests.do")" ]; then
+  echo "== self-tests: $(cat "$T/selftests.do")"
+  "$LIB/selftests" "$(cat "$T/selftests.do")"
+fi
 echo "== self-test: gate"
 su -s /bin/sh drivecanary -c 'SSH_ORIGINAL_COMMAND=drivecanary-ping /usr/local/lib/drivecanary/gate'
 echo "== self-test: probe through sudo (first frame)"

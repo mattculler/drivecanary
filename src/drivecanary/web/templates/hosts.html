@@ -36,6 +36,10 @@ There the agent runs from root's cron, and <code>smartctl</code> comes from the 
 Moving a host from one way to the other: <code>drivecanary host set HOST --transport push</code> (or <code>pull</code>),
 then the matching install.</p>
 
+<p class="muted">Add <code>--self-tests</code> to either install to have smartd give every drive a short self-test each
+month and a long one each year, each drive on a date of its own; <code>--no-self-tests</code> takes that out again.
+The host's page then says when each is next.</p>
+
 <p class="muted">Running the install again is how a probe upgrade or a repair is rolled out. A host that is away for months:
 <code>drivecanary host set HOST --state paused</code>; gone for good: <code>--state retired</code> (history is kept).
 What each failure class on a host's page means is in <code>deploy/README.md</code>.</p>
