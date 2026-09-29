@@ -26,6 +26,7 @@ from drivecanary.models import (
     SmartRun,
     Verdict,
 )
+from drivecanary.scrub import running as scrub_running
 from drivecanary.smart import SmartReport, display_raw, parse_report
 from drivecanary.timeutil import hours_ago, utcnow
 
@@ -55,6 +56,7 @@ class DriveRow:
     reasons: list[str]
     age_hours: float | None
     counters: dict[int, int] = field(default_factory=dict)  # attr id -> display raw (ATA)
+    testing: int | None = None  # percent done of a self-test running now
 
     @property
     def sort_key(self) -> tuple[int, str, str]:
@@ -77,6 +79,7 @@ class PoolRow:
     latest: PoolStatus | None
     verdict: Verdict
     age_hours: float | None
+    scrubbing: str | None = None  # '18.42%', or '' when it does not say how far; None: no scrub is running
 
 
 @dataclass
@@ -91,6 +94,14 @@ class Overview:
     hosts_watched: int = 0  # every host that is neither paused nor retired, however it is monitored
     hosts_ok: int = 0
     last_heard: datetime | None = None  # the newest word from any host
+
+    @property
+    def testing(self) -> int:
+        return sum(1 for d in self.drives if d.testing is not None)
+
+    @property
+    def scrubbing(self) -> int:
+        return sum(1 for p in self.pools if p.scrubbing is not None)
 
 
 def latest_run(session: Session, drive_id: int) -> SmartRun | None:
@@ -123,6 +134,21 @@ def _staled(verdict: Verdict, age: float | None, cfg: Config) -> Verdict:
     return verdict
 
 
+def running_selftest(session: Session, drive_id: int, cfg: Config, now: datetime) -> int | None:
+    """How far along a self-test is, by the last thing smartctl said, if it said it lately. An attrlog line
+    is newer as often as not and knows nothing of tests; this looks past those."""
+    row = session.execute(
+        select(SmartRun.selftest_progress, SmartRun.collected_at)
+        .where(SmartRun.drive_id == drive_id, SmartRun.source == "smartctl")
+        .order_by(SmartRun.collected_at.desc())
+        .limit(1)
+    ).first()
+    if row is None or row[0] is None:
+        return None
+    age = hours_ago(row[1], now)
+    return int(row[0]) if age is not None and age <= cfg.collect.stale_after_hours else None
+
+
 def drive_rows(session: Session, cfg: Config, now: datetime) -> list[DriveRow]:
     rows: list[DriveRow] = []
     for drive in session.scalars(select(Drive).where(~Drive.retired)):
@@ -132,6 +158,7 @@ def drive_rows(session: Session, cfg: Config, now: datetime) -> list[DriveRow]:
         verdict = Verdict(latest.verdict) if latest else Verdict.UNKNOWN
         reasons = latest.reasons.splitlines() if latest and latest.reasons else []
         counters = run_counters(session, latest, cfg.status.ata_warn_attributes) if latest else {}
+        testing = running_selftest(session, drive.id, cfg, now)
         rows.append(
             DriveRow(
                 drive=drive,
@@ -142,6 +169,7 @@ def drive_rows(session: Session, cfg: Config, now: datetime) -> list[DriveRow]:
                 reasons=reasons,
                 age_hours=age,
                 counters=counters,
+                testing=testing,
             )
         )
     rows.sort(key=lambda r: r.sort_key)
@@ -190,7 +218,18 @@ def pool_rows(session: Session, cfg: Config, now: datetime) -> list[PoolRow]:
         latest = latest_pool_status(session, pool.id)
         age = hours_ago(latest.collected_at, now) if latest else None
         verdict = Verdict(latest.verdict) if latest else Verdict.UNKNOWN
-        out.append(PoolRow(pool=pool, host=host, latest=latest, verdict=_staled(verdict, age, cfg), age_hours=age))
+        fresh = age is not None and age <= cfg.collect.stale_after_hours
+        scrubbing = scrub_running(pool.kind, latest.scrub) if latest is not None and fresh else None
+        out.append(
+            PoolRow(
+                pool=pool,
+                host=host,
+                latest=latest,
+                verdict=_staled(verdict, age, cfg),
+                age_hours=age,
+                scrubbing=scrubbing,
+            )
+        )
     out.sort(key=lambda r: (rank(r.verdict), r.host.name, r.pool.name))
     return out
 

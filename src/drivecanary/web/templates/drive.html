@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}{{ drive.label }} · drivecanary{% endblock %}
 {% block content %}
-<h1><span class="kind">{{ drive.kind }}</span>{{ drive.label }} <span class="muted">{{ drive.serial or drive.serial_key }}</span></h1>
+<h1><span class="kind">{{ drive.kind }}</span>{{ drive.label }} <span class="muted">{{ drive.serial or drive.serial_key }}</span>{% include "_running.html" %}</h1>
 <section class="summary">
   <span class="badge big v-{{ verdict.value }}">{{ verdict.value }}</span>
   {% if latest %}<span class="why">{{ (latest.reasons or 'nothing to report').replace('\n', '; ') }}</span>

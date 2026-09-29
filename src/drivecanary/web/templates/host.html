@@ -24,7 +24,7 @@
 <tr class="r-{{ d.verdict.value }}">
   <td>{% with v=d.verdict %}{% include "_badge.html" %}{% endwith %}</td>
   <td>{{ d.dev_name or '' }}</td>
-  <td><span class="kind">{{ d.drive.kind }}</span><a href="/drive/{{ d.drive.id }}">{{ d.drive.label }}</a></td>
+  <td><span class="kind">{{ d.drive.kind }}</span><a href="/drive/{{ d.drive.id }}">{{ d.drive.label }}</a>{% with testing=d.testing %}{% include "_running.html" %}{% endwith %}</td>
   <td class="muted">{{ d.drive.serial or d.drive.serial_key }}</td>
   <td class="num">{{ d.drive.capacity_bytes|bytes }}</td>
   <td class="num">{{ r.temp_c if r and r.temp_c is not none else '' }}</td>
@@ -40,7 +40,7 @@
 <div class="tbl"><table>
 <tr><th>status</th><th>kind</th><th>pool</th><th>health</th><th class="wrap">why</th></tr>
 {% for p in pools %}{% set s = p.latest %}
-<tr><td>{% with v=p.verdict %}{% include "_badge.html" %}{% endwith %}</td><td><span class="kind">{{ p.pool.kind }}</span></td><td><a href="/pool/{{ p.pool.id }}">{{ p.pool.name }}</a></td><td>{{ s.health if s else '' }}</td><td class="why">{{ (s.reasons or '').replace('\n', '; ') if s else '' }}</td></tr>
+<tr><td>{% with v=p.verdict %}{% include "_badge.html" %}{% endwith %}</td><td><span class="kind">{{ p.pool.kind }}</span></td><td><a href="/pool/{{ p.pool.id }}">{{ p.pool.name }}</a>{% with scrubbing=p.scrubbing %}{% include "_running.html" %}{% endwith %}</td><td>{{ s.health if s else '' }}</td><td class="why">{{ (s.reasons or '').replace('\n', '; ') if s else '' }}</td></tr>
 {% endfor %}
 </table></div>
 {% endif %}

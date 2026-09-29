@@ -10,6 +10,7 @@
   {% else %}
     <span class="muted">no hosts yet</span>
   {% endif %}
+  {% if ov.testing or ov.scrubbing %}<span class="chip-run">{% if ov.testing %}{{ ov.testing }} self-test{{ 's' if ov.testing != 1 }}{% endif %}{% if ov.testing and ov.scrubbing %}, {% endif %}{% if ov.scrubbing %}{{ ov.scrubbing }} scrub{{ 's' if ov.scrubbing != 1 }}{% endif %} running</span>{% endif %}
   {% for h in ov.hosts if h.host.state in ('unreachable', 'broken') %}
     <span class="problem"><a class="plain" href="/host/{{ h.host.name|urlencode }}">{{ h.host.name }}</a> {{ h.host.state }}{% if h.host.unreachable_since %} since {{ h.host.unreachable_since|ago(now) }}{% endif %}</span>
   {% endfor %}
@@ -33,7 +34,7 @@
 <tr class="r-{{ d.verdict.value }}">
   <td>{% with v=d.verdict %}{% include "_badge.html" %}{% endwith %}</td>
   <td>{% if d.host %}<a class="plain" href="/host/{{ d.host.name|urlencode }}">{{ d.host.name }}</a>{% if d.dev_name %} <span class="muted">{{ d.dev_name }}</span>{% endif %}{% else %}<span class="muted">?</span>{% endif %}</td>
-  <td><span class="kind">{{ d.drive.kind }}</span><a href="/drive/{{ d.drive.id }}">{{ d.drive.label }}</a></td>
+  <td><span class="kind">{{ d.drive.kind }}</span><a href="/drive/{{ d.drive.id }}">{{ d.drive.label }}</a>{% with testing=d.testing %}{% include "_running.html" %}{% endwith %}</td>
   <td class="muted">{{ d.drive.serial or d.drive.serial_key }}</td>
   <td class="num">{{ d.drive.capacity_bytes|bytes }}</td>
   <td class="num">{{ r.temp_c if r and r.temp_c is not none else '' }}</td>
@@ -57,7 +58,7 @@
   <td>{% with v=p.verdict %}{% include "_badge.html" %}{% endwith %}</td>
   <td><a class="plain" href="/host/{{ p.host.name|urlencode }}">{{ p.host.name }}</a></td>
   <td><span class="kind">{{ p.pool.kind }}</span></td>
-  <td><a href="/pool/{{ p.pool.id }}">{{ p.pool.name }}</a></td>
+  <td><a href="/pool/{{ p.pool.id }}">{{ p.pool.name }}</a>{% with scrubbing=p.scrubbing %}{% include "_running.html" %}{% endwith %}</td>
   <td>{{ s.health if s else '' }}</td>
   <td class="num">{{ s.read_errors if s and s.read_errors is not none else '' }}</td>
   <td class="num">{{ s.write_errors if s and s.write_errors is not none else '' }}</td>

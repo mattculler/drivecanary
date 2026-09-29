@@ -204,6 +204,34 @@ def test_pages_say_est_or_edt(cfg: Config, factory: sessionmaker[Session], probe
         assert url == "/pool/1" or re.search(r"\d\d:\d\d E[SD]T", page), url
 
 
+def test_what_is_running_is_said_wherever_the_thing_is_named(
+    cfg: Config, factory: sessionmaker[Session], probe_env: ProbeEnv
+) -> None:
+    (probe_env.shims.parent / "btrfs.scrub").write_text(
+        "UUID: 1234-uuid\nScrub started:    Mon Sep 28 02:00:01 2026\nStatus:           running\n"
+        "Duration:         0:10:05\nBytes scrubbed:   1.00TiB  (18.42%)\nError summary:    no errors found\n"
+    )
+    cfg.collect.stale_after_hours = 1e9  # the fixtures' readings are from 2021
+    _populated(cfg, factory, probe_env)
+    client = TestClient(create_app(cfg))
+    body = client.get("/").text
+    assert "1 self-test, 1 scrub running" in body
+    assert body.count("self-test 90%") == 1 and body.count(">scrub 18.42%<") == 1
+    with factory() as s:
+        wd = s.scalar(select(Drive).where(Drive.model == "WDC WD140EDFZ-11A0VA0"))
+        tank = s.scalar(select(Pool).where(Pool.name == "tank"))
+        btr = s.scalar(select(Pool).where(Pool.kind == "btrfs"))
+        assert wd is not None and tank is not None and btr is not None
+    assert "self-test 90%" in client.get(f"/drive/{wd.id}").text.split("</h1>")[0]
+    assert (
+        "self-test 90%" in client.get(f"/pool/{tank.id}").text
+        and "scrub" not in client.get(f"/pool/{tank.id}").text.split("</h1>")[0]
+    )
+    assert "scrub 18.42%" in client.get(f"/pool/{btr.id}").text.split("</h1>")[0]
+    host = client.get("/host/atlas").text
+    assert "self-test 90%" in host and "scrub 18.42%" in host
+
+
 def test_formatters() -> None:
     assert fmt_bytes(20000588955136) == "20.0 TB" and fmt_bytes(500107862016) == "500 GB" and fmt_bytes(None) == ""
     from datetime import timedelta

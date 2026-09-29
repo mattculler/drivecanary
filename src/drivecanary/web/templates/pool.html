@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}{{ pool.name }} · drivecanary{% endblock %}
 {% block content %}
-<h1><span class="kind">{{ pool.kind }}</span>{{ pool.name }} <span class="muted">on <a class="plain" href="/host/{{ host.name|urlencode }}">{{ host.name }}</a></span></h1>
+<h1><span class="kind">{{ pool.kind }}</span>{{ pool.name }}{% include "_running.html" %} <span class="muted">on <a class="plain" href="/host/{{ host.name|urlencode }}">{{ host.name }}</a></span></h1>
 {% if latest %}
 <section class="summary"><span class="badge big v-{{ latest.verdict }}">{{ latest.verdict }}</span><span>{{ latest.health or '' }}</span><span class="why">{{ (latest.reasons or '').replace('\n', '; ') }}</span><span class="muted">read {{ latest.collected_at|ago(now) }}</span></section>
 <h2>Disks in this pool</h2>
@@ -12,7 +12,7 @@
   <td>{% if d %}{% with v=d.verdict %}{% include "_badge.html" %}{% endwith %}{% endif %}</td>
   <td>{{ m.name }}</td>
   {% if m.drive %}
-  <td><span class="kind">{{ m.drive.kind }}</span><a href="/drive/{{ m.drive.id }}">{{ m.drive.label }}</a> <span class="muted" title="found by: {{ m.how }}">{{ m.dev_name }}</span></td>
+  <td><span class="kind">{{ m.drive.kind }}</span><a href="/drive/{{ m.drive.id }}">{{ m.drive.label }}</a>{% with testing=(d.testing if d else none), scrubbing=none %}{% include "_running.html" %}{% endwith %} <span class="muted" title="found by: {{ m.how }}">{{ m.dev_name }}</span></td>
   <td class="muted">{{ m.drive.serial or m.drive.serial_key }}</td>
   <td class="num">{{ m.drive.capacity_bytes|bytes }}</td>
   {% else %}
@@ -33,7 +33,7 @@
 <tr class="r-{{ d.verdict.value if d else 'unknown' }}">
   <td>{% if d %}{% with v=d.verdict %}{% include "_badge.html" %}{% endwith %}{% endif %}</td>
   <td>{{ s.dev_name }}</td>
-  <td><span class="kind">{{ s.drive.kind }}</span><a href="/drive/{{ s.drive.id }}">{{ s.drive.label }}</a></td>
+  <td><span class="kind">{{ s.drive.kind }}</span><a href="/drive/{{ s.drive.id }}">{{ s.drive.label }}</a>{% with testing=(d.testing if d else none), scrubbing=none %}{% include "_running.html" %}{% endwith %}</td>
   <td class="muted">{{ s.drive.serial or s.drive.serial_key }}</td>
   <td class="num">{{ s.drive.capacity_bytes|bytes }}</td>
 </tr>

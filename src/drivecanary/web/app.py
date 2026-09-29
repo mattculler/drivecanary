@@ -21,6 +21,7 @@ from drivecanary.config import Config, load_config
 from drivecanary.db import make_engine, sessionmaker_for
 from drivecanary.models import AttrlogCursor, CollectionRun, Drive, Host, HostAttempt, Pool, Verdict
 from drivecanary.pools import pool_members
+from drivecanary.scrub import running as scrub_running
 from drivecanary.scrub import summarize as summarize_scrub
 from drivecanary.smart import ATTR_LABELS, ERROR_KINDS, UNKNOWN_NAMES, SmartReport
 from drivecanary.timeutil import hours_ago, shown, utcnow
@@ -179,6 +180,7 @@ def create_app(config: Config | None = None) -> FastAPI:
             verdict=verdict,
             attrs=attrs,
             report=report,
+            testing=queries.running_selftest(db, drive.id, cfg, utcnow()),
             names=attr_names(report),
             logged=logged,
             error_kinds=ERROR_KINDS,
@@ -259,8 +261,18 @@ def create_app(config: Config | None = None) -> FastAPI:
         latest = queries.latest_pool_status(db, pool.id)
         members, others = pool_members(db, pool, latest)
         rows = {d.drive.id: d for d in queries.overview(db, cfg).drives}
+        fresh = latest is not None and (hours_ago(latest.collected_at) or 0) <= cfg.collect.stale_after_hours
+        scrubbing = scrub_running(pool.kind, latest.scrub) if latest is not None and fresh else None
         return page(
-            request, "pool.html", pool=pool, host=host, latest=latest, members=members, others=others, rows=rows
+            request,
+            "pool.html",
+            pool=pool,
+            host=host,
+            latest=latest,
+            members=members,
+            others=others,
+            rows=rows,
+            scrubbing=scrubbing,
         )
 
     @app.get("/healthz")

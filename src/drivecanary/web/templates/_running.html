@@ -1,0 +1,3 @@
+{# what is under way on a drive (testing: percent done) or a pool (scrubbing: '18%' or ''): beside every mention of it #}
+{% if testing is not none and testing is defined %}<span class="chip-run" title="a self-test is running on this drive">self-test {{ testing }}%</span>{% endif %}
+{% if scrubbing is not none and scrubbing is defined %}<span class="chip-run" title="this pool is being scrubbed">scrub{% if scrubbing %} {{ scrubbing }}{% endif %}</span>{% endif %}
