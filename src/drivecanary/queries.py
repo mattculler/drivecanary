@@ -161,7 +161,7 @@ def host_rows(session: Session, cfg: Config, now: datetime, drives: list[DriveRo
         elif host.state in (HostState.UNREACHABLE.value, HostState.BROKEN.value):
             verdict = Verdict.ERROR
         elif age is not None and age > cfg.collect.stale_after_hours:
-            verdict = Verdict.STALE
+            verdict = Verdict.STALE  # pull: the collector has stopped; push: the host has gone quiet
         else:
             verdict = Verdict.OK
         out.append(

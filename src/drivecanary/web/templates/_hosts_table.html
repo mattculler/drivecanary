@@ -1,9 +1,10 @@
 <div class="tbl"><table>
-<tr><th>status</th><th>host</th><th>state</th><th class="num">drives</th><th>last success</th><th>last attempt</th><th class="wrap">what happened</th></tr>
+<tr><th>status</th><th>host</th><th>how</th><th>state</th><th class="num">drives</th><th>last success</th><th>last attempt</th><th class="wrap">what happened</th></tr>
 {% for h in ov.hosts %}{% set a = h.last_attempt %}
 <tr class="r-{{ 'fail' if h.verdict.value == 'error' else h.verdict.value }}">
   <td>{% with v=h.verdict %}{% include "_badge.html" %}{% endwith %}</td>
   <td><a href="/host/{{ h.host.id }}">{{ h.host.name }}</a> <span class="muted">{{ h.host.address }}</span></td>
+  <td><span class="kind">{{ h.host.transport }}</span></td>
   <td>{{ h.host.state }}</td>
   <td class="num">{{ h.drives }}</td>
   <td class="muted" title="{{ h.host.last_success_at|dt }}">{{ h.host.last_success_at|ago(now) }}</td>
@@ -11,6 +12,6 @@
   <td class="why">{% if a and not a.ok %}<b>{{ a.failure_class }}</b>: {{ a.reason }}{% elif a %}ok: {{ a.drives_seen }} drive readings{% if h.host.last_attempt_reason %}; {{ h.host.last_attempt_reason.replace('\n', '; ') }}{% endif %}{% endif %}</td>
 </tr>
 {% else %}
-<tr><td colspan="7" class="muted">No hosts yet: <code>drivecanary host add NAME --address ... --tz ...</code></td></tr>
+<tr><td colspan="8" class="muted">No hosts yet: <code>drivecanary host add NAME --address ... --tz ...</code></td></tr>
 {% endfor %}
 </table></div>

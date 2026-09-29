@@ -32,6 +32,7 @@ def test_pages(cfg: Config, factory: sessionmaker[Session], probe_env: ProbeEnv)
     r = client.get("/hosts")
     assert r.status_code == 200 and "atlas" in r.text
     assert "<details" in r.text and "Adding a host" in r.text and "install-host.sh HOST --hub-ip" in r.text
+    assert "install-host.sh HOST --push --hub-url http://THIS-VM-IP:8081 --token TOKEN" in r.text
     assert "sudo cat" in r.text, "no hub key copy yet: the page says where to get it"
     (cfg.ssh_dir / "id_ed25519.pub").write_text("ssh-ed25519 AAAAtestkey drivecanary-hub@test\n")
     write_ssh_material(cfg, [])

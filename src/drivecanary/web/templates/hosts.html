@@ -6,6 +6,10 @@
 
 <details class="howto">
 <summary>Adding a host</summary>
+<p>A host is monitored one of two ways. <b>Pull</b>: the hub reaches it over ssh, hourly; nothing runs on the host in
+between. <b>Push</b>: an agent on the host reports to the hub, hourly and two minutes after the host boots; for a host
+that is only up on demand, and for the hypervisor this VM runs on, which should accept no key of the hub's.</p>
+<h3>Pull</h3>
 <p>Three steps. The first runs on your workstation, from a checkout of this repository, over your own ssh to the
 host (as root); the other two run on this VM.</p>
 <p><b>1. Workstation:</b> the <code>drivecanary</code> user, the probe and the gate, the sudoers line, and this hub's key
@@ -20,7 +24,17 @@ bound to the gate. It ends by printing the host's key fingerprint.</p>
 <pre>drivecanary host add HOST --address HOST.domain --fingerprint SHA256:...</pre>
 <p><b>3. Here:</b> the first collection. The host goes from pending to ok and its smartd history is pulled from the start.</p>
 <pre>drivecanary collect --host HOST</pre>
-<p class="muted">Running step 1 again is how a probe upgrade or a repair is rolled out. A host that is away for months:
+<h3>Push</h3>
+<p><b>1. Here:</b> the host's row. It prints the host's token, once, and the command for step 2.</p>
+<pre>drivecanary host add HOST --transport push</pre>
+<p><b>2. Workstation:</b> the <code>drivecanary</code> user, the probe, the agent with its token, and its timer. It ends
+by sending the first report.</p>
+<pre>deploy/host/install-host.sh HOST --push --hub-url http://{{ hub_ip or 'THIS-VM-IP' }}:{{ cfg.ingest.port }} --token TOKEN</pre>
+<p class="muted">A lost token: <code>drivecanary host token HOST</code> makes a new one, and step 2 again installs it.
+Moving a host from one way to the other: <code>drivecanary host set HOST --transport push</code> (or <code>pull</code>),
+then the matching install.</p>
+
+<p class="muted">Running the install again is how a probe upgrade or a repair is rolled out. A host that is away for months:
 <code>drivecanary host set HOST --state paused</code>; gone for good: <code>--state retired</code> (history is kept).
 What each failure class on a host's page means is in <code>deploy/README.md</code>.</p>
 </details>
