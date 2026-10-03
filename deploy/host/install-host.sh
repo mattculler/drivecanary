@@ -26,6 +26,8 @@
 #
 # usage: deploy/host/install-host.sh HOST --hub-ip IP --hub-key FILE-OR-KEY [--target SSH-DEST]
 #        deploy/host/install-host.sh HOST --push --hub-url URL --token TOKEN [--target SSH-DEST]
+#        deploy/host/install-host.sh HOST            again, with what it was given last time
+#        deploy/host/install-host.sh --all           every host this has installed, one after the other
 #   HOST        the name the host has (or will have) on the hub
 #   --hub-ip    pull: the hub VM's IP, the only source the key is accepted from
 #   --hub-key   pull: the hub's public key: /var/lib/drivecanary/ssh/id_ed25519.pub, or the key text
@@ -37,17 +39,58 @@
 #                    of /etc/smartd.conf; the file as it was is kept beside it.
 #   --no-self-tests  take that schedule out again
 # Without either, whatever self-test schedule the host has is left as it is.
+#
+# What a host was installed with is kept in ~/.config/drivecanary/hosts/HOST (mode 0600: the token is in it), so
+# that the next time, an upgrade or a repair, is `install-host.sh HOST`, with nothing to find in the shell's history.
+# Options given then override what was kept, and the file is written again; `--self-tests` stays on, so that a
+# drive added later gets its dates with the next run. `--pull` or `--push` moves a host the other way (the other
+# way's options are needed then). `--forget` removes the file.
 set -euo pipefail
 usage() {
   echo "usage: $0 HOST --hub-ip IP --hub-key FILE-OR-KEY [--target SSH-DEST] [--self-tests|--no-self-tests]   (pull: the hub reaches the host over ssh)"
   echo "       $0 HOST --push --hub-url URL --token TOKEN [--target SSH-DEST] [--self-tests|--no-self-tests]  (push: the host's agent reports to the hub)"
+  echo "       $0 HOST                                 (again, with what the host was installed with last time)"
+  echo "       $0 --all                                (every host this has installed)"
+  echo "       $0 HOST --forget                        (drop what was kept for the host)"
 }
 case "${1:-}" in ''|help|--help|-h) usage; exit 0 ;; esac
+KEPT=${DRIVECANARY_HOSTS_DIR:-$HOME/.config/drivecanary/hosts}
+if [ "$1" = --all ]; then
+  [ $# -eq 1 ] || { usage >&2; exit 64; }
+  hosts=()
+  for f in "$KEPT"/*; do [ -f "$f" ] && hosts+=("$(basename "$f")"); done
+  [ ${#hosts[@]} -gt 0 ] || { echo "no host has been installed from here yet (nothing in $KEPT)" >&2; exit 1; }
+  failed=()
+  for h in "${hosts[@]}"; do
+    echo "#### $h"
+    "$0" "$h" || failed+=("$h")
+    echo
+  done
+  if [ ${#failed[@]} -gt 0 ]; then echo "FAILED: ${failed[*]}" >&2; exit 1; fi
+  echo "all ${#hosts[@]} hosts done: ${hosts[*]}"
+  exit 0
+fi
 HOST=$1; shift
+case "$HOST" in */*|.*|-*|'') echo "not a host name: $HOST" >&2; exit 64 ;; esac
+if [ "${1:-}" = --forget ]; then
+  rm -f "$KEPT/$HOST"; echo "forgot $HOST ($KEPT/$HOST)"; exit 0
+fi
 MODE=pull; HUB_IP=""; HUB_KEY=""; HUB_URL=""; TOKEN=""; TARGET=$HOST; SELFTESTS=""
+if [ -f "$KEPT/$HOST" ]; then
+  while IFS= read -r line || [ -n "$line" ]; do
+    k=${line%%=*}; v=${line#*=}
+    case "$k" in
+      MODE) MODE=$v ;; HUB_IP) HUB_IP=$v ;; HUB_KEY) HUB_KEY=$v ;; HUB_URL) HUB_URL=$v ;;
+      TOKEN) TOKEN=$v ;; TARGET) TARGET=$v ;; SELFTESTS) SELFTESTS=$v ;;
+      ''|'#'*) ;; *) echo "$KEPT/$HOST: unknown line: $k" >&2; exit 1 ;;
+    esac
+  done < "$KEPT/$HOST"
+  [ $# -gt 0 ] || echo "as last time, from $KEPT/$HOST"
+fi
 while [ $# -gt 0 ]; do
   case "$1" in
     --push) MODE=push; shift ;;
+    --pull) MODE=pull; shift ;;
     --hub-ip) HUB_IP=$2; shift 2 ;;
     --hub-key) HUB_KEY=$2; shift 2 ;;
     --hub-url) HUB_URL=${2%/}; shift 2 ;;
@@ -55,6 +98,7 @@ while [ $# -gt 0 ]; do
     --target) TARGET=$2; shift 2 ;;
     --self-tests) SELFTESTS=apply; shift ;;
     --no-self-tests) SELFTESTS=remove; shift ;;
+    --forget) echo "--forget goes alone: $0 $HOST --forget" >&2; exit 64 ;;
     *) usage >&2; exit 64 ;;
   esac
 done
@@ -64,7 +108,7 @@ trap 'rm -rf "$WORK"' EXIT
 FILES=(probe gate sudoers selftests)
 if [ "$MODE" = pull ]; then
   [ -n "$HUB_IP" ] && [ -n "$HUB_KEY" ] || { usage >&2; exit 64; }
-  [ -f "$HUB_KEY" ] && HUB_KEY=$(cat "$HUB_KEY")
+  [ -f "$HUB_KEY" ] && HUB_KEY=$(head -1 "$HUB_KEY")
   case "$HUB_KEY" in ssh-ed25519\ *) ;; *) echo "--hub-key must be an ssh-ed25519 public key" >&2; exit 64 ;; esac
   printf 'restrict,from="%s",command="/usr/local/lib/drivecanary/gate" %s\n' "$HUB_IP" "$HUB_KEY" > "$WORK/authorized_keys"
 else
@@ -79,6 +123,19 @@ for f in "${FILES[@]}"; do
   [ -f "$HERE/$f" ] || { echo "missing $HERE/$f" >&2; exit 1; }
   cp "$HERE/$f" "$WORK/"
 done
+keep() {
+  mkdir -p "$KEPT" && chmod 0700 "$KEPT"
+  {
+    echo "# what deploy/host/install-host.sh $HOST was given, so that the next time is just that: install-host.sh $HOST"
+    printf 'MODE=%s\nTARGET=%s\n' "$MODE" "$TARGET"
+    if [ "$MODE" = pull ]; then printf 'HUB_IP=%s\nHUB_KEY=%s\n' "$HUB_IP" "$HUB_KEY"; else printf 'HUB_URL=%s\nTOKEN=%s\n' "$HUB_URL" "$TOKEN"; fi
+    # apply stays: a drive added later gets its dates with the next run. remove is done once.
+    [ "$SELFTESTS" = apply ] && echo "SELFTESTS=apply"
+    true
+  } > "$KEPT/$HOST.tmp"
+  chmod 0600 "$KEPT/$HOST.tmp" && mv "$KEPT/$HOST.tmp" "$KEPT/$HOST"
+}
+keep
 printf '%s\n' "$MODE" > "$WORK/mode"
 printf '%s\n' "$SELFTESTS" > "$WORK/selftests.do"
 cat > "$WORK/remote.sh" <<'REMOTE'
@@ -212,3 +269,4 @@ if [ "$MODE" = pull ]; then
 else
   echo "done. $HOST reports hourly, and two minutes after it boots. On the hub: drivecanary status"
 fi
+echo "kept in $KEPT/$HOST: next time, $0 $HOST (or $0 --all)"
