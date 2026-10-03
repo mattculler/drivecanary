@@ -153,7 +153,9 @@ def import_lines(
     source: str = SampleSource.ATTRLOG.value,
 ) -> ImportResult:
     """Store attrlog lines as smart_run + attr_sample rows. Idempotent: a line whose instant is already
-    stored for this drive and source is skipped, so a file can be imported again, or overlap a pulled chunk.
+    stored for this drive is skipped, so a file can be imported again, or overlap a pulled chunk. Stored by
+    any source: a smartctl reading of the same second (smartd restarted as the probe ran, on hv, 2026-10-03)
+    says more than the line, and attr_sample has room for one of them.
 
     `after` is the UTC instant of the line before the first one here (the cursor's last_ts), which is what
     resolves the repeated hour of a DST fall-back; a clock that truly went backwards is stored as read.
@@ -161,9 +163,7 @@ def import_lines(
     res = ImportResult()
     existing = {
         int(ts.timestamp())
-        for ts in session.scalars(
-            select(SmartRun.collected_at).where(SmartRun.drive_id == drive.id, SmartRun.source == source)
-        )
+        for ts in session.scalars(select(SmartRun.collected_at).where(SmartRun.drive_id == drive.id))
     }
     run_rows: list[dict[str, object]] = []
     attr_rows: list[list[tuple[int, int | None, int]]] = []

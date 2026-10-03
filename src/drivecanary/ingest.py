@@ -12,7 +12,7 @@ from datetime import datetime
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from drivecanary import attrlog
@@ -221,16 +221,15 @@ def _store_report(
     sighting.current = True
 
     collected_at = from_epoch(report.local_time) if report.local_time else when_default
-    dup = session.scalar(
-        select(SmartRun.id).where(
-            SmartRun.drive_id == drive.id,
-            SmartRun.source == SampleSource.SMARTCTL.value,
-            SmartRun.collected_at == collected_at,
-        )
-    )
-    if dup is not None:
+    dup = session.scalar(select(SmartRun).where(SmartRun.drive_id == drive.id, SmartRun.collected_at == collected_at))
+    if dup is not None and dup.source == SampleSource.SMARTCTL.value:
         res.warnings.append(f"{dev_name}: a reading at {collected_at:%Y-%m-%d %H:%M:%S} is already stored")
         return False
+    if dup is not None:
+        # an attrlog line of the same second: the reading says more, and attr_sample has room for one of them
+        session.execute(delete(AttrSample).where(AttrSample.run_id == dup.id))
+        session.delete(dup)
+        session.flush()
     scheduled = is_scheduled(host.smartd_conf, dev_name, drive.serial_key)
     verdict, reasons = judge_report(report, cfg.status, scheduled=scheduled)
     run = SmartRun(

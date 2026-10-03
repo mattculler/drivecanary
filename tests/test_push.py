@@ -3,15 +3,19 @@
 from __future__ import annotations
 
 import gzip
+from datetime import UTC, datetime
 
+import pytest
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
-from drivecanary import push
+from drivecanary import attrlog, collect, push
 from drivecanary.config import Config
 from drivecanary.ingest_api import create_ingest_app
-from drivecanary.models import Host, HostAttempt, HostState, SmartRun, Transport
-from tests.conftest import ProbeEnv
+from drivecanary.models import AttrSample, Drive, Host, HostAttempt, HostState, SmartRun, Transport
+from drivecanary.timeutil import zone
+from tests.conftest import ProbeEnv, load_json
 
 
 def _push_host(factory: sessionmaker[Session], name: str = "pve") -> str:
@@ -115,3 +119,77 @@ def test_listener_refuses_a_body_over_the_cap(cfg: Config, factory: sessionmaker
     r = client.post("/api/ingest", content=b"x")
     assert r.status_code == 401
     assert client.get("/healthz").json()["service"] == "ingest"
+
+
+#: the WD's reading in smart-ata.json was taken at this instant; smartd on the fixture host logs it in New York time
+READ_AT = datetime.fromtimestamp(load_json("smart-ata.json")["local_time"]["time_t"], UTC)
+WD_ATTRLOG = "attrlog.WDC_WD140EDFZ_11A0VA0-9RK1XXXX.ata.csv"
+
+
+def _wd_line(when: datetime) -> str:
+    local = when.astimezone(zone("America/New_York"))
+    return f"{local:%Y-%m-%d %H:%M:%S};\t1;100;0;\t5;100;0;\t9;99;1730;\t194;100;32;\n"
+
+
+def test_an_attrlog_line_in_the_second_of_the_reading_is_not_a_collision(
+    cfg: Config, factory: sessionmaker[Session], probe_env: ProbeEnv
+) -> None:
+    # hv, 2026-10-03: the install restarted smartd, which logged every drive as the probe read them; the hub
+    # answered 500 (attr_sample is keyed by drive, attribute and second, not by source) and the agent kept
+    # the payload, and every one after it, for ever.
+    (probe_env.attrlog_dir / WD_ATTRLOG).write_text(_wd_line(READ_AT))
+    token = _push_host(factory)
+    envelope = probe_env.run_gate("drivecanary-collect").stdout
+    reply = push.receive(cfg, factory, token=token, body=envelope)
+    assert reply.status == 200 and reply.lines[0].startswith("ok "), reply.text
+    assert "attrlog_lines=21" in reply.lines[0] and f"cursor {WD_ATTRLOG}=" in reply.text, (
+        "read, and the cursor moved on"
+    )
+    with factory() as s:
+        wd = s.scalar(select(Drive).where(Drive.serial_key == "9RK1XXXX"))
+        assert wd is not None
+        runs = s.scalars(select(SmartRun).where(SmartRun.drive_id == wd.id, SmartRun.collected_at == READ_AT)).all()
+        assert [r.source for r in runs] == ["smartctl"], "the reading, which says more; the line added nothing"
+        assert s.scalar(select(func.count()).select_from(AttrSample).where(AttrSample.run_id == runs[0].id)) > 4
+
+
+def test_a_reading_in_the_second_of_a_stored_line_takes_its_place(
+    cfg: Config, factory: sessionmaker[Session], probe_env: ProbeEnv
+) -> None:
+    with factory() as s:
+        drive = attrlog.drive_for(s, attrlog.parse_name(WD_ATTRLOG))
+        attrlog.import_lines(
+            s, drive=drive, tz=zone("America/New_York"), lines=attrlog.iter_lines(_wd_line(READ_AT)), cfg=cfg.status
+        )
+        s.commit()
+        drive_id = drive.id
+    token = _push_host(factory)
+    reply = push.receive(cfg, factory, token=token, body=probe_env.run_gate("drivecanary-collect").stdout)
+    assert reply.status == 200 and reply.lines[0].startswith("ok "), reply.text
+    with factory() as s:
+        runs = s.scalars(select(SmartRun).where(SmartRun.drive_id == drive_id, SmartRun.collected_at == READ_AT)).all()
+        assert [r.source for r in runs] == ["smartctl"]
+        assert s.scalar(select(func.count()).select_from(AttrSample).where(AttrSample.drive_id == drive_id)) > 4
+        assert s.scalar(
+            select(func.count()).select_from(AttrSample).where(AttrSample.run_id == runs[0].id)
+        ) == s.scalar(select(func.count()).select_from(AttrSample).where(AttrSample.drive_id == drive_id)), (
+            "the line's samples went with it"
+        )
+
+
+def test_a_row_the_database_refuses_is_a_failure_the_agent_hears_of_and_drops(
+    cfg: Config, factory: sessionmaker[Session], probe_env: ProbeEnv, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def refuse(*a: object, **kw: object) -> None:
+        raise IntegrityError("INSERT INTO attr_sample", {}, Exception("UNIQUE constraint failed: attr_sample.drive_id"))
+
+    monkeypatch.setattr(collect, "ingest_envelope", refuse)
+    token = _push_host(factory)
+    reply = push.receive(cfg, factory, token=token, body=probe_env.run_gate("drivecanary-collect").stdout)
+    assert reply.status == 200, "delivered: retrying the same payload would fail the same way"
+    assert reply.lines[0].startswith("failed class=unknown reason=the database refused a row: UNIQUE constraint failed")
+    with factory() as s:
+        attempt = s.scalar(select(HostAttempt))
+        assert attempt is not None and attempt.ok is False and attempt.failure_class == "unknown"
+        assert attempt.finished_at is not None, "not left running"
+    assert _host(factory).state == HostState.BROKEN.value

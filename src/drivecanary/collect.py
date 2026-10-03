@@ -18,6 +18,7 @@ from datetime import datetime
 from pathlib import Path
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
 from drivecanary.config import Config
@@ -280,6 +281,10 @@ def ingest_result(
             ingested = ingest_envelope(s, host=host, attempt=attempt, env=env, cfg=cfg)
         except (IngestError, EnvelopeError, ValueError, KeyError) as e:
             error = e
+        except (
+            IntegrityError
+        ) as e:  # a row the database would not take: this payload cannot be stored, and is done with
+            error = IngestError(FailureClass.UNKNOWN, f"the database refused a row: {e.orig}")
         if error is None and ingested is not None:
             attempt.ok = True
             attempt.drives_seen = ingested.runs
