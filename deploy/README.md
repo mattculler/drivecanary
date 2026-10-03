@@ -50,6 +50,9 @@ drivecanary collect --host atlas
 ```
 
 `install-host.sh` is idempotent and is also how a probe upgrade or a repair is rolled out: run it again.
+It keeps what each host was given in `~/.config/drivecanary/hosts/HOST` on the workstation (mode 0600: a
+push host's token is in it), so that running it again is `deploy/host/install-host.sh atlas`, and every
+host at once is `deploy/host/install-host.sh --all`. Options given on a later run override what was kept.
 What it needs on the host: Debian bullseye or newer (`smartctl` 7.0+ for `--json`), `sudo` (installed if
 absent), and if sshd has `AllowUsers`/`AllowGroups`, `drivecanary` added to it.
 
@@ -60,7 +63,8 @@ host's row and is not used again until it is.
 
 `install-host.sh` is also how a host gets a newer probe, gate or agent. A host's page says which versions it
 runs and says so when the checkout on the hub has newer ones. Nothing on the hub needs doing again after a
-reinstall: the host says what it runs with its next report.
+reinstall: the host says what it runs with its next report. After `drivecanary update` on the hub, from the
+same checkout on the workstation: `git pull && deploy/host/install-host.sh --all`.
 
 Times on the pages are in `[web].timezone` (America/New_York unless you say otherwise): EST or EDT, as the
 date has it. The database keeps UTC.
@@ -220,8 +224,9 @@ never reaches out to a push host); the host's journal can.
 | | |
 |---|---|
 | a lost or leaked token | `drivecanary host token pve`, then step 2 again with the new one |
-| pull host to push | `drivecanary host set atlas --transport push`, then `install-host.sh atlas --push ...` (it removes the hub's key) |
-| push host to pull | `drivecanary host set pve --transport pull`, then `install-host.sh pve --hub-ip ... --hub-key ...` (it stops the agent), then `drivecanary host keyscan pve` |
+| pull host to push | `drivecanary host set atlas --transport push`, then `install-host.sh atlas --push --hub-url ... --token ...` (it removes the hub's key) |
+| push host to pull | `drivecanary host set pve --transport pull`, then `install-host.sh pve --pull --hub-ip ... --hub-key ...` (it stops the agent), then `drivecanary host keyscan pve` |
+| a host that is gone | `drivecanary host set NAME --state retired`, and `install-host.sh NAME --forget` on the workstation |
 
 ### OPNsense
 
