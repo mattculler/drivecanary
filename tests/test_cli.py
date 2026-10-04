@@ -230,3 +230,11 @@ def test_migration_matches_the_models(tmp_path: Path) -> None:
         diff = compare_metadata(MigrationContext.configure(conn, opts={"compare_type": True}), Base.metadata)
     engine.dispose()
     assert diff == [], diff
+
+
+def test_host_set_retired(tmp_path: Path) -> None:
+    c = _config(tmp_path)
+    assert runner.invoke(app, ["-c", c, "db", "migrate"]).exit_code == 0
+    assert runner.invoke(app, ["-c", c, "host", "add", "atlas", "--no-keyscan"]).exit_code == 0
+    r = runner.invoke(app, ["-c", c, "host", "set", "atlas", "--state", "retired"])
+    assert r.exit_code == 0 and "updated atlas" in r.output and "retired with it" not in r.output, "nothing on it"

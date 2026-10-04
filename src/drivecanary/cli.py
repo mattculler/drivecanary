@@ -448,6 +448,12 @@ def host_set(
             if state_ not in (HostState.PENDING.value, HostState.PAUSED.value, HostState.RETIRED.value):
                 err.print("[red]--state takes pending, paused or retired[/red]")
                 raise typer.Exit(2)
+            if state_ == HostState.RETIRED.value and host.state != state_:
+                from drivecanary.hosts import retire
+
+                drives, pools = retire(s, host)
+                if drives or pools:
+                    typer.echo(f"retired with it: {drives} drive(s) and {pools} pool(s) last seen on {name}")
             host.state = state_
             if state_ == HostState.PENDING.value:
                 host.unreachable_since = None
