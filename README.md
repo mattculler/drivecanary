@@ -27,7 +27,7 @@ make dev-config                          # dev/config.toml: database and keys un
 export DRIVECANARY_CONFIG=dev/config.toml
 make dev-db                              # create the database
 
-# some history to look at: a host's smartd logs, copied from /var/lib/smartmontools/attrlog.*.csv on it
+# load some history to look at: a host's smartd logs, copied from /var/lib/smartmontools/attrlog.*.csv
 uv run drivecanary host add atlas --address atlas.domain --no-keyscan
 uv run drivecanary import attrlog path/to/attrlog.*.csv --host atlas
 
@@ -63,8 +63,8 @@ deploy/host/install-host.sh atlas --hub-ip HUB-IP --hub-key 'ssh-ed25519 AAAA...
 drivecanary host add atlas --address atlas.domain --fingerprint SHA256:...                       # on the hub
 ```
 
-A host the hub should not reach (its own hypervisor, a router) pushes instead:
-`drivecanary host add hv --transport push` on the hub prints a token for
+For hosts that the hub should not have access to (e.g. its own hypervisor, a router), use push instead:
+`drivecanary host add hv --transport push` on the hub, prints a token
 `deploy/host/install-host.sh hv --push --hub-url http://HUB-IP:8081 --token TOKEN`.
 
 The page is at `http://HUB-IP:8080/`, and its hosts page repeats these steps with your hub's address and key
@@ -73,8 +73,6 @@ filled in. Settings are in `/etc/drivecanary/config.toml`; backups, updates and 
 
 ## How it works
 
-`docs/design.md` has the reasoning. In short:
-
 - **Hosts** run a root-owned, read-only probe behind one sudoers line. It runs `smartctl -j -x` per drive and
   the pool tools, and passes back their output untouched, with whatever smartd has logged since last time.
 - **Pull hosts** let the hub's key run only that probe (a forced command). **Push hosts** run it from a timer
@@ -82,6 +80,8 @@ filled in. Settings are in `/etc/drivecanary/config.toml`; backups, updates and 
 - **The hub** parses and judges everything (SMART PASSED is not enough: exit bits, Backblaze's five counters,
   the NVMe health log, the error log), and records why any host went quiet.
 - **The page** reads the database and nothing else.
+
+`docs/design.md` for more detail.
 
 Layout:
 
@@ -94,7 +94,6 @@ Layout:
 Examples and tests use placeholders (`atlas`, `hv`, `10.100.100.x`, `HOST.domain`). `scripts/check-private`
 keeps your own names, addresses and serials out of commits.
 
-## Not yet
+## Todo
 
-NVMe attribute logs and NVMe self-test schedules (smartd has both only from smartmontools 7.5), and hosts
-other than Debian and OPNsense. Alerting is left to smartd on each host (`-M exec`).
+- NVMe attribute logs and NVMe self-test schedules (smartd has both only from smartmontools 7.5)
