@@ -4,7 +4,8 @@
 
 Drive health for a home LAN: SMART, pool state and trends from every host, on one page. A hub VM pulls from
 each host over ssh once an hour, keeps every reading in one SQLite file, and shows what is failing, what is
-about to, and what has not been heard from. Formerly pyvmind, a 2017 Flask app rebuilt from scratch in 2026.
+about to, and what has not been heard from. `docs/design.md` says how it works and why; it was formerly
+pyvmind, a 2017 Flask app rebuilt from scratch in 2026.
 
 ## How it fits together
 
