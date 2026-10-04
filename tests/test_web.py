@@ -36,6 +36,7 @@ def test_pages(cfg: Config, factory: sessionmaker[Session], probe_env: ProbeEnv)
     assert "<h2>Drives</h2>" in body and "<h2>Pools</h2>" in body and "<h2>Hosts</h2>" in body, (
         "the front page as it was"
     )
+    assert body.count('<th class="wrap">why</th>') == 2, (
         "drives and pools have reasons to give; the hosts table has its own"
     )
     drives_page = client.get("/drives").text

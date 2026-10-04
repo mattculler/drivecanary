@@ -243,5 +243,6 @@ def test_the_menu_the_drives_page_and_the_retired_landing(cfg: Config, factory: 
     drives_part, hosts_part = landing.split("<h2>Hosts</h2>")
     assert "FAKE00001" in drives_part and "FAKE00000002" in drives_part and ">storage2</a>" in drives_part
     assert ">storage2</a>" in hosts_part and '<td class="num">1</td>' in hosts_part
+    assert ">why<" not in landing, "2017's readings said nothing was wrong: no empty why column"
     drives = client.get("/drives").text
     assert "<h1>Drives</h1>" in drives and "No drives yet" in drives and "2 retired drives" in drives

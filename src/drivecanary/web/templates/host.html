@@ -59,8 +59,9 @@ drivecanary collect --host {{ host.name }}{% endif %}</pre>
 {% endif %}
 
 <h2>Syncs</h2>
+{% set any_reason = attempts|selectattr("reason")|list %}
 <div class="tbl"><table>
-<tr><th>started</th><th>how</th><th>result</th><th class="num">drives</th><th class="num">bytes</th><th class="num">ssh rc</th><th>host clock</th><th class="wrap">reason</th></tr>
+<tr><th>started</th><th>how</th><th>result</th><th class="num">drives</th><th class="num">bytes</th><th class="num">ssh rc</th><th>host clock</th>{% if any_reason %}<th class="wrap">reason</th>{% endif %}</tr>
 {% for a in attempts %}
 <tr class="r-{{ 'ok' if a.ok else 'fail' }}">
   <td title="{{ a.started_at|dt }}">{{ a.started_at|ago(now) }}</td>
@@ -68,7 +69,7 @@ drivecanary collect --host {{ host.name }}{% endif %}</pre>
   <td>{% if a.ok %}<span class="badge v-ok">ok</span>{% elif a.finished_at %}<span class="badge v-error">{{ a.failure_class or 'failed' }}</span>{% else %}<span class="badge v-unknown">running</span>{% endif %}</td>
   <td class="num">{{ a.drives_seen }}</td><td class="num">{{ '{:,}'.format(a.bytes_received) }}</td><td class="num">{{ a.ssh_rc if a.ssh_rc is not none else '' }}</td>
   <td class="muted">{{ a.host_collected_at|dt }}</td>
-  <td class="why">{{ a.reason or '' }}</td>
+  {% if any_reason %}<td class="why">{{ a.reason or '' }}</td>{% endif %}
 </tr>
 {% else %}<tr><td colspan="8" class="muted">{{ "has not reported yet" if host.transport == "push" else "never tried" }}</td></tr>{% endfor %}
 </table></div>

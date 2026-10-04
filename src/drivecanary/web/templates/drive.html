@@ -72,11 +72,12 @@
 {% endif %}
 
 <h2>Recent readings</h2>
+{% set any_why = runs|selectattr("reasons")|list %}
 <div class="tbl"><table>
-<tr><th>when</th><th>source</th><th>status</th><th class="num">°C (°F)</th><th class="num" title="power-on hours">hours</th><th class="wrap">why</th></tr>
+<tr><th>when</th><th>source</th><th>status</th><th class="num">°C (°F)</th><th class="num" title="power-on hours">hours</th>{% if any_why %}<th class="wrap">why</th>{% endif %}</tr>
 {% for r in runs %}
 <tr><td title="{{ r.collected_at|dt }}">{{ r.collected_at|dt }}</td><td>{{ r.source }}</td><td>{% with v=r.verdict %}<span class="badge v-{{ v }}">{{ v }}</span>{% endwith %}</td>
-<td class="num">{{ r.temp_c|tempcell }}</td><td class="num">{{ r.power_on_hours|hourscell }}</td><td class="why">{{ (r.reasons or '').replace('\n', '; ') }}</td></tr>
+<td class="num">{{ r.temp_c|tempcell }}</td><td class="num">{{ r.power_on_hours|hourscell }}</td>{% if any_why %}<td class="why">{{ (r.reasons or '').replace('\n', '; ') }}</td>{% endif %}</tr>
 {% endfor %}
 </table></div>
 {% endblock %}

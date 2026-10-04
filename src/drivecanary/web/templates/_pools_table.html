@@ -1,6 +1,7 @@
 {# Pools. Give it rows (PoolRow) and show_host. #}
+{% set any_why = rows|selectattr("latest.reasons")|list %}
 <div class="tbl"><table>
-<tr><th>status</th>{% if show_host %}<th>host</th>{% endif %}<th>kind</th><th>pool</th><th>health</th><th class="num">read</th><th class="num">write</th><th class="num">cksum</th><th>scrub</th><th>read</th><th class="wrap">why</th></tr>
+<tr><th>status</th>{% if show_host %}<th>host</th>{% endif %}<th>kind</th><th>pool</th><th>health</th><th class="num">read</th><th class="num">write</th><th class="num">cksum</th><th>scrub</th><th>read</th>{% if any_why %}<th class="wrap">why</th>{% endif %}</tr>
 {% for p in rows %}{% set s = p.latest %}
 <tr class="r-{{ p.verdict.value }}">
   <td>{% with v=p.verdict %}{% include "_badge.html" %}{% endwith %}</td>
@@ -13,7 +14,7 @@
   <td class="num">{{ s.cksum_errors if s and s.cksum_errors is not none else '' }}</td>
   <td class="why">{{ s.scrub|scrub(p.pool.kind) if s else '' }}</td>
   <td class="muted">{{ s.collected_at|ago(now) if s else 'never' }}</td>
-  <td class="why">{{ (s.reasons or '').replace('\n', '; ') if s else '' }}</td>
+  {% if any_why %}<td class="why">{{ (s.reasons or '').replace('\n', '; ') if s else '' }}</td>{% endif %}
 </tr>
 {% endfor %}
 </table></div>

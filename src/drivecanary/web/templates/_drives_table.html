@@ -1,5 +1,6 @@
 {# Drives in service. Give it rows (DriveRow), show_host (a host column; else the device), and empty (what to say
    when there are none). #}
+{% set any_why = rows|selectattr("reasons")|list %}
 <div class="tbl"><table>
 <tr>
   <th>status</th><th>{{ "host" if show_host else "dev" }}</th><th>drive</th><th>serial</th><th class="num">size</th>
@@ -10,7 +11,7 @@
   <th class="num" title="197 Current_Pending_Sector">pending</th>
   <th class="num" title="198 Offline_Uncorrectable">offline</th>
   <th title="solid state: rated endurance used. NVMe adds: / available spare / media errors">wear</th>
-  <th>read</th><th class="wrap">why</th>
+  <th>read</th>{% if any_why %}<th class="wrap">why</th>{% endif %}
 </tr>
 {% for d in rows %}
 {% set r = d.latest %}
@@ -26,7 +27,7 @@
   {% for a in (5, 187, 188, 197, 198) %}<td class="num">{{ d.counters[a] if a in d.counters else '' }}</td>{% endfor %}
   <td>{% if r and r.nvme_percentage_used is not none %}{{ r.nvme_percentage_used }}% / {{ r.nvme_available_spare }}% / {{ r.nvme_media_errors }}{% elif r and r.endurance_used is not none %}{{ r.endurance_used }}%{% endif %}</td>
   <td class="muted" title="{{ r.collected_at|dt if r else '' }}">{{ r.collected_at|ago(now) if r else 'never' }}</td>
-  <td class="why">{{ d.reasons|join('; ') }}</td>
+  {% if any_why %}<td class="why">{{ d.reasons|join('; ') }}</td>{% endif %}
 </tr>
 {% else %}
 <tr><td colspan="15" class="muted">{{ empty }}</td></tr>

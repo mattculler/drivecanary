@@ -1,11 +1,12 @@
 {# Retired hosts. Give it hosts (HostRow) and drives (host id -> retired drives last seen there). #}
+{% set any_note = hosts|selectattr("host.note")|list %}
 <div class="tbl"><table>
-<tr><th>host</th><th class="num">drives last seen there</th><th>last heard from</th><th class="wrap">note</th></tr>
+<tr><th>host</th><th class="num">drives last seen there</th><th>last heard from</th>{% if any_note %}<th class="wrap">note</th>{% endif %}</tr>
 {% for h in hosts %}
 <tr><td><a href="/host/{{ h.host.name|urlencode }}">{{ h.host.name }}</a></td>
   <td class="num">{{ drives.get(h.host.id, 0) }}</td>
   <td class="muted">{{ h.host.last_success_at|dt if h.host.last_success_at else 'never by drivecanary' }}</td>
-  <td class="why">{{ h.host.note or '' }}</td></tr>
+  {% if any_note %}<td class="why">{{ h.host.note or '' }}</td>{% endif %}</tr>
 {% else %}
 <tr><td colspan="4" class="muted">No retired hosts.</td></tr>
 {% endfor %}
