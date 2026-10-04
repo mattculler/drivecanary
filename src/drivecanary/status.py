@@ -86,8 +86,11 @@ def judge_report(r: SmartReport, cfg: StatusConfig, *, scheduled: bool = False) 
         else:
             v.warn(f"the self-test log has failed tests ({last or 'see the log'})")
     age = r.selftest_age_hours
-    if scheduled and cfg.selftest_max_age_days and age is not None and age > cfg.selftest_max_age_days * 24:
-        v.warn(f"no self-test for {age // 24} days of power-on time, though one is scheduled every month")
+    if scheduled and cfg.selftest_max_age_days:
+        if age is not None and age > cfg.selftest_max_age_days * 24:
+            v.warn(f"no self-test for {age // 24} days of power-on time, though one is scheduled every month")
+        elif age is None and (r.power_on_hours or 0) > cfg.selftest_max_age_days * 24:
+            v.warn("no self-test in the log at all, though one is scheduled every month")
     if r.endurance_used is not None and r.endurance_used >= cfg.nvme_percentage_used_warn:
         v.warn(f"{r.endurance_used}% of rated endurance used")
     if cfg.error_log_recent_hours:

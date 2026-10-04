@@ -114,8 +114,12 @@ def test_a_schedule_that_has_stopped_is_noticed() -> None:
     ]
     assert judge_report(parse_report(doc), CFG)[0] == Verdict.OK, "nothing schedules one: nothing is overdue"
     assert judge_report(parse_report(doc), StatusConfig(selftest_max_age_days=0), scheduled=True)[0] == Verdict.OK
-    never = load_json("smart-nvme.json")
-    assert judge_report(parse_report(never), CFG, scheduled=True)[0] == Verdict.OK, "never tested: not counted"
+    never = load_json("smart-nvme.json")  # 2,401 power-on hours and nothing in the self-test log
+    v, why = judge_report(parse_report(never), CFG, scheduled=True)
+    assert v == Verdict.WARN and why == ["no self-test in the log at all, though one is scheduled every month"]
+    assert judge_report(parse_report(never), CFG)[0] == Verdict.OK, "nothing scheduled: an empty log is nothing"
+    never["power_on_time"]["hours"] = 100
+    assert judge_report(parse_report(never), CFG, scheduled=True)[0] == Verdict.OK, "too young to have had its first"
 
 
 def test_judge_attrs_for_attrlog_lines() -> None:
