@@ -1,0 +1,9 @@
+{
+  "name": "drivecanary",
+  "short_name": "drivecanary",
+  "icons": [
+    { "src": "/static/icon-192.png", "sizes": "192x192", "type": "image/png" }
+  ],
+  "start_url": "/",
+  "display": "browser"
+}

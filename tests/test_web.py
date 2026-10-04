@@ -99,6 +99,12 @@ def test_pages(cfg: Config, factory: sessionmaker[Session], probe_env: ProbeEnv)
         got = client.get(icon)
         assert got.status_code == 200 and got.content.startswith(b"\x89PNG"), icon
     assert 'href="/static/favicon-32.png"' in body and "favicon.svg" not in body
+    tab_icons = re.findall(r'<link rel="icon"[^>]*href="([^"]+)"', body)
+    assert tab_icons == ["/static/favicon-16.png", "/static/favicon-32.png"], "the bird only: one picture in the tab"
+    manifest = client.get("/static/manifest.webmanifest")
+    assert manifest.status_code == 200 and manifest.headers["content-type"].startswith("application/manifest+json")
+    assert manifest.json()["icons"][0]["src"] == "/static/icon-192.png", "the tile is for home screens"
+    assert client.get("/static/icon-192.png").content.startswith(b"\x89PNG")
     assert client.get("/static/uPlot.iife.min.js").status_code == 200
     assert client.get("/drive/999").status_code == 404
 

@@ -5,7 +5,9 @@
 <title>{% block title %}drivecanary{% endblock %}</title>
 <link rel="icon" type="image/png" sizes="16x16" href="/static/favicon-16.png">
 <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32.png">
-<link rel="icon" type="image/png" sizes="192x192" href="/static/icon-192.png">
+{# the tile is for home screens, through the manifest: offered as a tab icon too, Firefox showed the bird or the
+   tile depending on whether the tab came from the page or from its favicon cache #}
+<link rel="manifest" href="/static/manifest.webmanifest">
 <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="stylesheet" href="/static/uPlot.min.css">
