@@ -1,4 +1,4 @@
-<p align="center"><img src="docs/logo.jpg" alt="drivecanary: a canary standing on a hard drive platter" width="480"></p>
+<p align="center"><img src="docs/logo.png" alt="drivecanary: a canary standing on a hard drive platter" width="480"></p>
 
 # drivecanary
 

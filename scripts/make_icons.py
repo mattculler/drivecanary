@@ -1,4 +1,4 @@
-"""The page's icons, made from docs/logo.jpg: `python3 scripts/make_icons.py` (needs Pillow; run by hand when
+"""The page's icons, made from docs/logo.png: `python3 scripts/make_icons.py` (needs Pillow; run by hand when
 the logo changes, the results are committed).
 
 Two pictures come out of the logo. The favicon is the canary by itself on nothing: cut out by its colour,
@@ -16,11 +16,13 @@ from PIL import Image, ImageDraw, ImageFilter
 ROOT = Path(__file__).resolve().parents[1]
 STATIC = ROOT / "src" / "drivecanary" / "web" / "static"
 
-#: where things are in docs/logo.jpg (1408 x 768), read off a ruler laid over it
-LOGO_SIZE = (1408, 768)
-TILE = (462, 94, 944, 578)  # the squircle, just inside its edge
+#: where things are in docs/logo.png (653 x 768), read off a ruler laid over it
+LOGO_SIZE = (653, 768)
+TILE = (85, 94, 567, 578)  # the squircle, just inside its edge
 TILE_RADIUS = 0.23  # of its width
-CANARY = (692, 100, 972, 400)  # a box with the whole bird in it
+CANARY = (315, 100, 595, 400)  # a box with the whole bird in it
+#: the logo's background is transparent; the bird is cut out by colour against the pale grey it was drawn on
+BACKDROP = (240, 245, 248)
 INSIDE = (130, 150)  # a point of that box that is certainly bird
 HEAD_ENDS = 140  # above this row of the box, holes in the yellow are eyes and beak, and are filled
 
@@ -79,9 +81,12 @@ def tile(logo: Image.Image, size: int, *, rounded: bool) -> Image.Image:
 
 
 def main() -> None:
-    logo = Image.open(ROOT / "docs" / "logo.jpg").convert("RGB")
-    if logo.size != LOGO_SIZE:
-        raise SystemExit(f"docs/logo.jpg is {logo.size}, not {LOGO_SIZE}: measure CANARY, INSIDE and HEAD_ENDS again")
+    drawn = Image.open(ROOT / "docs" / "logo.png").convert("RGBA")
+    if drawn.size != LOGO_SIZE:
+        raise SystemExit(f"docs/logo.png is {drawn.size}, not {LOGO_SIZE}: measure TILE, CANARY and the rest again")
+    logo = Image.new("RGBA", drawn.size, (*BACKDROP, 255))
+    logo.alpha_composite(drawn)
+    logo = logo.convert("RGB")
     canary = cut_out_canary(logo)
     made = {
         "favicon-16.png": centred(canary, 16, 0.0),  # no room to spare at this size
