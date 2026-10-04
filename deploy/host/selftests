@@ -17,7 +17,8 @@
 #
 # A drive keeps the dates it was first given (they are written down in the state file), so adding a drive
 # moves nobody else's. Drives are named by /dev/disk/by-id, which does not change when sda and sdb swap.
-# NVMe drives are left to DEVICESCAN: smartd does not schedule their self-tests before smartmontools 7.5.
+# NVMe drives are left to DEVICESCAN: smartd does not schedule their self-tests before smartmontools 7.5. So is a
+# drive that says it runs no self-tests at all (some SATA SSDs): a schedule would only fail on it.
 #
 # Linux: the schedule is a marked block of /etc/smartd.conf, put before DEVICESCAN, each line with
 # DEVICESCAN's own directives and a -s of its own; the file as it was is kept beside it, once. The new file
@@ -66,10 +67,17 @@ talks() { # talks DEVICE: smartctl can open it and it answers
   [ $((rc & 3)) -eq 0 ]
 }
 
+can_test() { # can_test DEVICE: false when the drive says it runs no self-tests (SCSI and the silent: assumed to)
+  if smartctl -j -c "$1" 2>/dev/null | grep -q '"self_tests_supported": false'; then
+    echo "selftests: $1 says it runs no self-tests; it is left out" >&2
+    return 1
+  fi
+}
+
 drives() { # one "ID DEVICE" per drive that can be given a test
   if [ "$OS" = FreeBSD ]; then
     for d in $(sysctl -n kern.disks); do
-      case "$d" in ada[0-9]*|da[0-9]*) talks "/dev/$d" && echo "$d /dev/$d" ;; esac
+      case "$d" in ada[0-9]*|da[0-9]*) talks "/dev/$d" && can_test "/dev/$d" && echo "$d /dev/$d" ;; esac
     done
     return
   fi
@@ -78,7 +86,7 @@ drives() { # one "ID DEVICE" per drive that can be given a test
     case "${link##*/}" in *-part[0-9]*) continue ;; esac
     echo "$(readlink -f "$link") $link"
   done | sort | awk '!seen[$1]++ { print $2 }' | while read -r link; do
-    talks "$link" && echo "${link##*/} $link"
+    talks "$link" && can_test "$link" && echo "${link##*/} $link"
   done
 }
 

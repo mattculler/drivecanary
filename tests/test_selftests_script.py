@@ -234,3 +234,16 @@ def test_on_opnsense_too(tmp_path: Path) -> None:
     cp = b.run("apply")
     assert cp.returncode == 0, cp.stderr
     assert b.started() == ["ada1"]
+
+
+def test_a_drive_that_runs_no_self_tests_is_left_out(box: Box) -> None:
+    # some SATA SSDs say so; a schedule for one never runs, and a catch-up test cannot start
+    cannot = _tested(None)
+    cannot["ata_smart_data"]["capabilities"]["self_tests_supported"] = False
+    box.says("ata-ST20000NM007D-3DJ103_ZXA00003", cannot)
+    box.says("ata-ST20000NM007D-3DJ103_ZXA00001", _tested(None))  # can, and never has: caught up
+    cp = box.run("apply")
+    assert cp.returncode == 0, cp.stderr
+    assert "ZXA00003 says it runs no self-tests; it is left out" in cp.stderr
+    assert "ata-ST20000NM007D-3DJ103_ZXA00003" not in box.schedules()
+    assert box.started() == ["ata-ST20000NM007D-3DJ103_ZXA00001"]
