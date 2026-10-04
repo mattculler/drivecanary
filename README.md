@@ -1,4 +1,7 @@
-<p align="center"><img src="docs/logo.png" alt="drivecanary: a canary standing on a hard drive platter" width="480"></p>
+<p align="center"><picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/logo-dark.png">
+  <img src="docs/logo.png" alt="drivecanary: a canary standing on a hard drive platter" width="320">
+</picture></p>
 
 # drivecanary
 
