@@ -56,7 +56,7 @@ def test_temperature_warns() -> None:
     doc["temperature"]["current"] = 61
     doc["nvme_smart_health_information_log"]["temperature"] = 61
     v, why = judge_report(parse_report(doc), CFG)
-    assert v == Verdict.WARN and "61 °C" in why
+    assert v == Verdict.WARN and "61 °C (142 °F)" in why
 
 
 def test_nvme_critical_warning_fails() -> None:

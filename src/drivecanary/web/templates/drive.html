@@ -16,7 +16,7 @@
   <dt>history</dt><dd>{{ '{:,}'.format(span[2]) }} readings{% if span[0] %}, {{ span[0]|dt }} → {{ span[1]|dt }}{% endif %}</dd>
   {% if latest %}
   <dt>latest</dt><dd>
-    {% if latest.temp_c is not none %}{{ latest.temp_c }} °C · {% endif %}{{ latest.power_on_hours|hours }}{% if latest.power_cycles is not none %} · {{ latest.power_cycles }} power cycles{% endif %}
+    {% if latest.temp_c is not none %}{{ latest.temp_c|temp }} · {% endif %}{{ latest.power_on_hours|hours }}{% if latest.power_cycles is not none %} · {{ latest.power_cycles }} power cycles{% endif %}
     {% if latest.passed is not none %} · SMART {{ 'PASSED' if latest.passed else 'FAILED' }}{% endif %}
     {% if latest.exit_status is not none %} · smartctl exit {{ latest.exit_status }}{% endif %}
     {% if latest.endurance_used is not none %} · {{ latest.endurance_used }}% of rated endurance used{% endif %}
@@ -58,10 +58,10 @@
 
 <h2>Recent readings</h2>
 <div class="tbl"><table>
-<tr><th>when</th><th>source</th><th>status</th><th class="num">°C</th><th class="num">hours</th><th class="wrap">why</th></tr>
+<tr><th>when</th><th>source</th><th>status</th><th class="num">°C (°F)</th><th class="num">hours</th><th class="wrap">why</th></tr>
 {% for r in runs %}
 <tr><td title="{{ r.collected_at|dt }}">{{ r.collected_at|dt }}</td><td>{{ r.source }}</td><td>{% with v=r.verdict %}<span class="badge v-{{ v }}">{{ v }}</span>{% endwith %}</td>
-<td class="num">{{ r.temp_c if r.temp_c is not none else '' }}</td><td class="num">{{ r.power_on_hours if r.power_on_hours is not none else '' }}</td><td class="why">{{ (r.reasons or '').replace('\n', '; ') }}</td></tr>
+<td class="num">{{ r.temp_c|tempcell }}</td><td class="num">{{ r.power_on_hours if r.power_on_hours is not none else '' }}</td><td class="why">{{ (r.reasons or '').replace('\n', '; ') }}</td></tr>
 {% endfor %}
 </table></div>
 {% endblock %}
@@ -74,7 +74,8 @@ document.querySelectorAll('.chart').forEach(function (el) {
     if (!xs.length) { el.innerHTML = '<div class="u-title">' + el.dataset.label + '</div><div class="empty">nothing in this window</div>'; return; }
     new uPlot({
       width: el.clientWidth - 12, height: 150, title: el.dataset.label,
-      series: [{}, { label: el.dataset.unit || el.dataset.label, stroke: '#2563eb', width: 1.5, spanGaps: true, points: { show: xs.length < 200 } }],
+      series: [{}, { label: el.dataset.unit || el.dataset.label, stroke: '#2563eb', width: 1.5, spanGaps: true, points: { show: xs.length < 200 },
+        value: function (u, v) { return v == null ? '' : el.dataset.unit === '°C' ? v + ' °C (' + Math.round(v * 9 / 5 + 32) + ' °F)' : v; } }],
       axes: [{}, { size: 56 }],
       scales: { x: { time: true } },
       tzDate: function (ts) { return uPlot.tzDate(new Date(ts * 1e3), el.dataset.tz); },

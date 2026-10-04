@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from drivecanary.config import StatusConfig
 from drivecanary.models import Verdict
-from drivecanary.smart import NVME_CRITICAL, SmartReport, display_raw
+from drivecanary.smart import NVME_CRITICAL, SmartReport, display_raw, fahrenheit
 
 ATTR_NAMES = {
     5: "Reallocated_Sector_Ct",
@@ -104,7 +104,7 @@ def judge_report(r: SmartReport, cfg: StatusConfig, *, scheduled: bool = False) 
     if r.scsi_uncorrected_errors:
         v.warn(f"{r.scsi_uncorrected_errors} uncorrected SCSI errors")
     if r.temp_c is not None and r.temp_c >= cfg.temp_warn_c:
-        v.warn(f"{r.temp_c} °C")
+        v.warn(f"{r.temp_c} °C ({fahrenheit(r.temp_c)} °F)")
     if r.bit(2):
         v.warn("a SMART command failed or a checksum error occurred")
     return v.result()
@@ -118,7 +118,7 @@ def judge_attrs(raws: dict[int, int], temp_c: int | None, cfg: StatusConfig) -> 
         if raw is not None and display_raw(attr_id, raw) > 0:
             v.warn(f"{ATTR_NAMES.get(attr_id, f'attribute {attr_id}')} = {display_raw(attr_id, raw)}")
     if temp_c is not None and temp_c >= cfg.temp_warn_c:
-        v.warn(f"{temp_c} °C")
+        v.warn(f"{temp_c} °C ({fahrenheit(temp_c)} °F)")
     return v.result()
 
 

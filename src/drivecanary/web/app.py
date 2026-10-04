@@ -13,6 +13,7 @@ from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from markupsafe import Markup
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -23,7 +24,7 @@ from drivecanary.models import AttrlogCursor, CollectionRun, Drive, Host, HostAt
 from drivecanary.pools import pool_members
 from drivecanary.scrub import running as scrub_running
 from drivecanary.scrub import summarize as summarize_scrub
-from drivecanary.smart import ATTR_LABELS, ERROR_KINDS, UNKNOWN_NAMES, SmartReport
+from drivecanary.smart import ATTR_LABELS, ERROR_KINDS, UNKNOWN_NAMES, SmartReport, fahrenheit
 from drivecanary.timeutil import hours_ago, shown, utcnow
 
 TEMPLATES = Path(__file__).parent / "templates"
@@ -62,6 +63,16 @@ def fmt_ago(dt: datetime | None, now: datetime | None = None) -> str:
     if h < 48:
         return f"{h:.1f} h ago"
     return f"{h / 24:.0f} d ago"
+
+
+def fmt_temp(c: int | float | None) -> str:
+    """Celsius as the drive said it, and Fahrenheit for the room it is in."""
+    return f"{c:g} °C ({fahrenheit(c)} °F)" if c is not None else ""
+
+
+def fmt_temp_cell(c: int | float | None) -> Markup:
+    """The same, in a column headed °C (°F)."""
+    return Markup('{:g} <span class="muted">({})</span>').format(c, fahrenheit(c)) if c is not None else Markup("")
 
 
 def fmt_hours(h: int | None) -> str:
@@ -143,6 +154,8 @@ def create_app(config: Config | None = None) -> FastAPI:
     templates.env.filters["ago"] = fmt_ago
     templates.env.filters["dt"] = lambda dt: shown(dt, cfg.web.timezone)
     templates.env.filters["hours"] = fmt_hours
+    templates.env.filters["temp"] = fmt_temp
+    templates.env.filters["tempcell"] = fmt_temp_cell
     templates.env.filters["scrub"] = lambda text, kind: summarize_scrub(kind, text)
     templates.env.globals["version"] = __version__
     templates.env.globals["attr_label"] = lambda i: ATTR_LABELS.get(i, f"Attribute {i}")

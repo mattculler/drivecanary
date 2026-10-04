@@ -121,6 +121,11 @@ _RAW_MASK: dict[int, int] = {
 }
 
 
+def fahrenheit(c: float) -> int:
+    """The drives report Celsius; the page says both."""
+    return round(c * 9 / 5 + 32)
+
+
 def display_raw(attr_id: int, raw: int) -> int:
     """The raw value as a number to trend: the packed fields stripped where the id is known to pack them."""
     n = raw & _RAW_MASK.get(attr_id, 0xFFFFFFFFFFFF)

@@ -20,7 +20,7 @@
 <div class="tbl"><table>
 <tr>
   <th>status</th><th>host</th><th>drive</th><th>serial</th><th class="num">size</th>
-  <th class="num" title="temperature, °C">°C</th><th class="num" title="power-on hours">hours</th>
+  <th class="num" title="temperature as the drive reports it, and in Fahrenheit">°C (°F)</th><th class="num" title="power-on hours">hours</th>
   <th class="num" title="5 Reallocated_Sector_Ct">realloc</th>
   <th class="num" title="187 Reported_Uncorrect">uncorr</th>
   <th class="num" title="188 Command_Timeout">timeout</th>
@@ -37,7 +37,7 @@
   <td><span class="kind">{{ d.drive.kind }}</span><a href="/drive/{{ d.drive.id }}">{{ d.drive.label }}</a>{% with testing=d.testing %}{% include "_running.html" %}{% endwith %}</td>
   <td class="muted">{{ d.drive.serial or d.drive.serial_key }}</td>
   <td class="num">{{ d.drive.capacity_bytes|bytes }}</td>
-  <td class="num">{{ r.temp_c if r and r.temp_c is not none else '' }}</td>
+  <td class="num">{{ r.temp_c|tempcell if r else '' }}</td>
   <td class="num">{{ '{:,}'.format(r.power_on_hours) if r and r.power_on_hours is not none else '' }}</td>
   {% for a in (5, 187, 188, 197, 198) %}<td class="num">{{ d.counters[a] if a in d.counters else '' }}</td>{% endfor %}
   <td>{% if r and r.nvme_percentage_used is not none %}{{ r.nvme_percentage_used }}% / {{ r.nvme_available_spare }}% / {{ r.nvme_media_errors }}{% elif r and r.endurance_used is not none %}{{ r.endurance_used }}%{% endif %}</td>

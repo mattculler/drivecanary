@@ -19,7 +19,7 @@
 
 <h2>Drives</h2>
 <div class="tbl"><table>
-<tr><th>status</th><th>dev</th><th>drive</th><th>serial</th><th class="num">size</th><th class="num">°C</th><th class="num">hours</th><th>read</th><th class="wrap">why</th></tr>
+<tr><th>status</th><th>dev</th><th>drive</th><th>serial</th><th class="num">size</th><th class="num" title="as the drive reports it, and in Fahrenheit">°C (°F)</th><th class="num">hours</th><th>read</th><th class="wrap">why</th></tr>
 {% for d in drives %}{% set r = d.latest %}
 <tr class="r-{{ d.verdict.value }}">
   <td>{% with v=d.verdict %}{% include "_badge.html" %}{% endwith %}</td>
@@ -27,7 +27,7 @@
   <td><span class="kind">{{ d.drive.kind }}</span><a href="/drive/{{ d.drive.id }}">{{ d.drive.label }}</a>{% with testing=d.testing %}{% include "_running.html" %}{% endwith %}</td>
   <td class="muted">{{ d.drive.serial or d.drive.serial_key }}</td>
   <td class="num">{{ d.drive.capacity_bytes|bytes }}</td>
-  <td class="num">{{ r.temp_c if r and r.temp_c is not none else '' }}</td>
+  <td class="num">{{ r.temp_c|tempcell if r else '' }}</td>
   <td class="num">{{ '{:,}'.format(r.power_on_hours) if r and r.power_on_hours is not none else '' }}</td>
   <td class="muted">{{ r.collected_at|ago(now) if r else 'never' }}</td>
   <td class="why">{{ d.reasons|join('; ') }}</td>

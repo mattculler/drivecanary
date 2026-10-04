@@ -261,6 +261,19 @@ def test_a_hosts_page_says_when_its_drives_test_themselves(
     assert "has not said what its schedule is" in client.get("/host/atlas").text
 
 
+def test_temperatures_say_fahrenheit_too(cfg: Config, factory: sessionmaker[Session], probe_env: ProbeEnv) -> None:
+    from drivecanary.web.app import fmt_temp, fmt_temp_cell
+
+    assert fmt_temp(32) == "32 °C (90 °F)" and fmt_temp(None) == "" and fmt_temp(36.5) == "36.5 °C (98 °F)"
+    assert str(fmt_temp_cell(25)) == '25 <span class="muted">(77)</span>' and str(fmt_temp_cell(None)) == ""
+    _populated(cfg, factory, probe_env)
+    client = TestClient(create_app(cfg))
+    for url in ("/", "/host/atlas"):
+        page = client.get(url).text
+        assert "°C (°F)" in page and '32 <span class="muted">(90)</span>' in page, url
+    assert "32 °C (90 °F)" in client.get("/drive/1").text
+
+
 def test_formatters() -> None:
     assert fmt_bytes(20000588955136) == "20.0 TB" and fmt_bytes(500107862016) == "500 GB" and fmt_bytes(None) == ""
     from datetime import timedelta
