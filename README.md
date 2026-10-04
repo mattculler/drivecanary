@@ -2,80 +2,32 @@
 
 # drivecanary
 
-Drive health for a home LAN: SMART, pool state and trends from every host, on one page. Once an hour a hub VM
-pulls from each host over ssh, or the host's agent pushes to the hub over HTTP; the hub keeps every reading in
-one SQLite file and shows what is failing, what is about to, and what has not been heard from.
-
-## How it fits together
-
-- **`docs/design.md`** says how it works and why; what follows is the short version.
-- **Pull hosts** run nothing between collections. Each has a `drivecanary` user whose only ssh key is the hub's,
-  bound by a forced command to `deploy/host/gate`; the gate runs `deploy/host/probe` as root through one
-  sudoers line, and the probe runs `smartctl -j -x` per device, `zpool`/`btrfs`/`mdadm` where present, and
-  hands back everything it saw plus the tail of smartd's attribute logs since the hub last read them.
-  `deploy/host/install-host.sh HOST` sets all of that up from your workstation.
-- **Push hosts** are the exception: a host that is only up on demand, or the hypervisor the hub runs on,
-  runs `deploy/host/agent` from a timer instead and reports to the hub with a token. Same probe, same data.
-- **The hub** (`drivecanary collect`, from a systemd timer) parses what came back (`smartctl -j` JSON: no text
-  scraping), judges every drive (`drivecanary/status.py`: SMART PASSED is not enough; the exit bits,
-  Backblaze's five counters and the NVMe health log are), and records for every host what happened, so a
-  silent host always has a reason on its row.
-- **The page** (`drivecanary web serve`, FastAPI + Jinja2 + uPlot) reads the database and nothing else: the
-  overview worst-first, a page per drive with trends, the hosts and their attempts.
-- **History** comes from two places: the hourly probe, and smartd's own attrlog CSVs, which Debian has been
-  writing every 30 minutes on every host for years (`drivecanary import attrlog` for copies; the collector
-  keeps pulling new lines afterwards).
-
-## Quickstart on a VM
-
-The hub is a small Debian VM (1 vCPU and 1 GB are plenty) with a static address. As root on the VM:
-
-```bash
-apt install git curl openssh-client
-curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh
-git clone <this repository> /opt/drivecanary
-/opt/drivecanary/deploy/install.sh        # users, units, venv, database; prints the hub's public key
-editor /etc/drivecanary/config.toml       # optional: the defaults suit a LAN; [web].timezone is the zone times are shown in
-systemctl restart drivecanary-web         # after changing the config
-```
-
-Then add a host. Pull is the default: the hub reaches the host over ssh with a key that can only run the
-read-only probe.
-
-```bash
-# on your workstation, from a checkout, with root ssh to the host
-deploy/host/install-host.sh atlas --hub-ip HUB-IP --hub-key 'ssh-ed25519 AAAA... drivecanary-hub@hub'
-# on the hub, with the host key fingerprint install-host.sh printed last
-drivecanary host add atlas --address atlas.domain --fingerprint SHA256:...
-drivecanary collect --host atlas
-```
-
-For a host the hub should not reach (its own hypervisor, a router, a machine that is only up now and then),
-use push: `drivecanary host add hv --transport push` on the hub prints a token, and
-`deploy/host/install-host.sh hv --push --hub-url http://HUB-IP:8081 --token TOKEN` on the workstation
-installs the agent. Add `--self-tests` to either install to give every drive a monthly short and yearly long
-self-test, each on a date of its own.
-
-The page is at `http://HUB-IP:8080/`; its hosts page repeats these steps with your hub's address and key
-filled in. `deploy/README.md` has the rest: backups, updates (`drivecanary update`), what each failure on a
-host's row means, OPNsense.
+Drive health monitoring for a LAN:
+- Saves all SMART data, for years, in one SQLite file
+- Trend graphs, and warnings when the SMART attributes that predict failure tick up
+- Reads SMART error logs: a failing drive, a bad cable and a harmless aborted command each read differently
+- Schedules SMART self-tests on every host, each drive on a date of its own
+- Watches ZFS, btrfs and mdadm pools, and their scrubs
+- A drive keeps its history when it moves between hosts, or is retired and comes back
+- Imports history already on your hosts (smartd's attribute logs) and old `smartctl -a` captures
+- Two ways for data to reach the hub VM: it pulls over ssh, or the host pushes over HTTP
+- Runs on Debian and Proxmox hosts and OPNsense routers; hosts need nothing but smartmontools and a
+  read-only probe
 
 ## Development quickstart
 
-Requirements: Linux, Python 3.13+, `uv`. The tests run the real host scripts against stand-ins, so they need
-`sh`, `flock` and `timeout` too, as any Linux has. Nothing needs root or the network.
+Requirements: Linux, Python 3.13+, `uv`.
 
 ```bash
 git clone <this repository> && cd drivecanary
 uv sync                                  # .venv with every dependency
-make check                               # ruff, mypy --strict and the test suite
+make check                               # ruff, mypy --strict and the tests
 
-make dev-config                          # dev/config.toml: database, keys and backups under ./dev (gitignored)
+make dev-config                          # dev/config.toml: database and keys under ./dev
 export DRIVECANARY_CONFIG=dev/config.toml
-make dev-db                              # create the database schema
-uv run drivecanary config check
+make dev-db                              # create the database
 
-# history to look at: a host's smartd attribute logs, copied from /var/lib/smartmontools on it
+# some history to look at: a host's smartd logs, copied from /var/lib/smartmontools/attrlog.*.csv on it
 uv run drivecanary host add atlas --address atlas.domain --no-keyscan
 uv run drivecanary import attrlog path/to/attrlog.*.csv --host atlas
 
@@ -83,42 +35,66 @@ uv run drivecanary web serve             # http://127.0.0.1:8080/
 uv run drivecanary status                # the same, in the terminal
 ```
 
-To collect from a real host from a dev checkout, give it a hub key
-(`ssh-keygen -t ed25519 -N '' -f dev/ssh/id_ed25519`), install the host with that public key and your
-workstation's address as `--hub-ip`, pin its key (`uv run drivecanary host keyscan atlas --fingerprint
-SHA256:...`), and run `uv run drivecanary collect --host atlas`.
+To read a real host live, your checkout plays the hub: give it a key, install the host pointed at your
+machine, and collect.
 
-Names, addresses and serials in examples and tests are placeholders (`atlas`, `hv`, `10.100.100.x`,
-`HOST.domain`); your own belong in the unversioned config that holds them (`/etc/drivecanary/config.toml` on
-the hub, `~/.config/drivecanary/hosts/` on the workstation).
+```bash
+ssh-keygen -t ed25519 -N '' -f dev/ssh/id_ed25519
+deploy/host/install-host.sh atlas --hub-ip YOUR-IP --hub-key dev/ssh/id_ed25519.pub   # ends with a fingerprint
+uv run drivecanary host keyscan atlas --fingerprint SHA256:...
+uv run drivecanary collect --host atlas
+```
 
-Everything in the page and the CLI works offline on imported attrlogs; the first real collection adds the
-identity smartctl knows (model family, firmware, WWN, capacity), the pools, and NVMe drives. `scripts/check-private`
-refuses a commit that contains any of your own names, addresses or serials, going by a list that is never
-committed either (`scripts/check-private --help` says where it lives and how to install it as a git hook).
+## Production quickstart
 
-## Layout
+The hub is a small Debian VM (1 vCPU, 1 GB) with a static address. As root on it:
 
-- `src/drivecanary/config.py` — the settings model; `deploy/config.example.toml` is generated from it
-  (`make config-example`) and a test fails when it is stale.
-- `src/drivecanary/models.py` — SQLAlchemy models; `alembic/` — migrations (`drivecanary db migrate`).
-- `src/drivecanary/smart.py` — `smartctl -j` into a flat report; `status.py` — the OK/WARN/FAIL rules.
-- `src/drivecanary/envelope.py` — the byte stream the gate sends; `ingest.py` — that stream into rows;
-  `collect.py` — the ssh pull, parallel per host, one transaction per host.
-- `src/drivecanary/push.py` — what a push agent delivers, stored the same way; `ingest_api.py` — the
-  listener it delivers to, a service of its own so the page stays read-only.
-- `src/drivecanary/pools.py` — which drives a pool is made of: what its status names, found in what the
-  host reports.
-- `src/drivecanary/attrlog.py` — smartd attribute logs, whole files or chunks past a cursor.
-- `src/drivecanary/queries.py` — what the page and `drivecanary status` show; `web/` — the page.
-- `deploy/` — the VM install (`install.sh`, `update.sh`, `backup.sh`, units) and `deploy/host/` — what goes
-  on each monitored host (`probe`, `gate`, `agent`, `sudoers`, `install-host.sh`). See `deploy/README.md`.
-- `scripts/make_icons.py` — cuts the page's icons from `docs/logo.jpg` (run by hand when the logo changes).
-- `scripts/check-private` — keeps the names, addresses and serials of your own setup out of commits.
-- `tests/fixtures/smartctl/` — real `smartctl -j` captures (from Scrutiny's test data, MIT) covering ATA,
-  SATA SSD, NVMe, SAS, a USB bridge, a failing drive and an open failure.
+```bash
+apt install git curl openssh-client
+curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh
+git clone <this repository> /opt/drivecanary
+/opt/drivecanary/deploy/install.sh       # prints the hub's public key
+```
+
+Then, for each host, from a checkout on your workstation (root ssh to the host) and on the hub:
+
+```bash
+deploy/host/install-host.sh atlas --hub-ip HUB-IP --hub-key 'ssh-ed25519 AAAA...' --self-tests   # ends with a fingerprint
+drivecanary host add atlas --address atlas.domain --fingerprint SHA256:...                       # on the hub
+```
+
+A host the hub should not reach (its own hypervisor, a router) pushes instead:
+`drivecanary host add hv --transport push` on the hub prints a token for
+`deploy/host/install-host.sh hv --push --hub-url http://HUB-IP:8081 --token TOKEN`.
+
+The page is at `http://HUB-IP:8080/`, and its hosts page repeats these steps with your hub's address and key
+filled in. Settings are in `/etc/drivecanary/config.toml`; backups, updates and troubleshooting are in
+`deploy/README.md`.
+
+## How it works
+
+`docs/design.md` has the reasoning. In short:
+
+- **Hosts** run a root-owned, read-only probe behind one sudoers line. It runs `smartctl -j -x` per drive and
+  the pool tools, and passes back their output untouched, with whatever smartd has logged since last time.
+- **Pull hosts** let the hub's key run only that probe (a forced command). **Push hosts** run it from a timer
+  and send the result to the hub with a per-host token.
+- **The hub** parses and judges everything (SMART PASSED is not enough: exit bits, Backblaze's five counters,
+  the NVMe health log, the error log), and records why any host went quiet.
+- **The page** reads the database and nothing else.
+
+Layout:
+
+- `src/drivecanary/` — `smart.py` reads smartctl's JSON, `status.py` judges it, `ingest.py` stores it,
+  `collect.py` pulls, `push.py`/`ingest_api.py` receive pushes, `web/` is the page, `config.py` the settings.
+- `deploy/` — the VM install and units; `deploy/host/` — what goes on each host (`probe`, `gate`, `agent`,
+  `selftests`, `install-host.sh`).
+- `tests/` — runs the real host scripts against stand-ins; no network, no root.
+
+Examples and tests use placeholders (`atlas`, `hv`, `10.100.100.x`, `HOST.domain`). `scripts/check-private`
+keeps your own names, addresses and serials out of commits.
 
 ## Not yet
 
-NVMe attribute logs and scheduled NVMe self-tests (smartd does both only from smartmontools 7.5), and hosts
-other than Debian and OPNsense. Alerting is smartd's job on each host (`-M exec`), not the hub's.
+NVMe attribute logs and NVMe self-test schedules (smartd has both only from smartmontools 7.5), and hosts
+other than Debian and OPNsense. Alerting is left to smartd on each host (`-M exec`).
