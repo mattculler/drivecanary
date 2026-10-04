@@ -204,7 +204,7 @@ def test_the_host_a_capture_came_from(tmp_path: Path, cfg: Config) -> None:
     assert "<h2>Retired hosts</h2>" in hosts_page and "never by drivecanary" in hosts_page
     assert hosts_page.index("storage1") > hosts_page.index("<h2>Retired hosts</h2>"), "not in the live table"
     host_page = client.get("/host/storage1").text
-    assert "Retired: this host is not collected from" in host_page and "<dt>self-tests</dt>" not in host_page
+    assert "Retired: history is kept indefinitely" in host_page and "<dt>self-tests</dt>" not in host_page
     assert "<h2>Retired drives last seen here</h2>" in host_page and "TOSHIBA DT01ACA300" in host_page
     drive_page = client.get(f"/drive/{desktop_id}").text
     where = drive_page.split("<dt>where</dt>")[1].split("</dd>")[0]

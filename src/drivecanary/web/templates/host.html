@@ -2,8 +2,25 @@
 {% block title %}{{ host.name }} · drivecanary{% endblock %}
 {% block content %}
 {# the address only where it says something the name does not #}
-{% if host.state == "retired" %}<p class="muted">Retired: this host is not collected from, and its history is kept. <code>drivecanary host set {{ host.name }} --state pending</code> and its install bring it back.</p>{% endif %}
 <h1>{{ host.name }}{% if host.address != host.name or host.ssh_port != 22 %} <span class="muted">{{ host.address }}{% if host.ssh_port != 22 %}:{{ host.ssh_port }}{% endif %}</span>{% endif %}</h1>
+{% if host.state == "retired" %}<div class="retired-note"><p>Retired: history is kept indefinitely, but data from this host is not collected. Bring it back with:</p>
+<pre># on the hub
+drivecanary host set {{ host.name }} --state pending --address {{ host.address }}
+{% if host.transport == "push" %}drivecanary host token {{ host.name }}          # a new token for its agent
+
+# on your workstation, from a checkout of drivecanary
+deploy/host/install-host.sh {{ host.name }} --push --hub-url http://{{ hub_ip or 'HUB-IP' }}:{{ cfg.ingest.port }} --token TOKEN{% else %}
+# on your workstation, from a checkout of drivecanary
+deploy/host/install-host.sh {{ host.name }} --hub-ip {{ hub_ip or 'HUB-IP' }} \
+  --hub-key '{{ hub_key or 'ssh-ed25519 AAAA... drivecanary-hub' }}'
+
+# on the hub, with the fingerprint install-host.sh printed last
+drivecanary host keyscan {{ host.name }} --fingerprint SHA256:...
+drivecanary collect --host {{ host.name }}{% endif %}</pre>
+<p class="muted">Add <code>--target root@ADDRESS</code> to the install if your ssh config does not reach the host as {{ host.name }}, and
+<code>--self-tests</code> for its drives' self-test schedule. If it was installed from this workstation before,
+<code>deploy/host/install-host.sh {{ host.name }}</code> alone repeats that install.</p></div>
+{% endif %}
 <dl class="kv">
   <dt>state</dt><dd>{{ host.state }}{% if host.unreachable_since %} (unreachable since {{ host.unreachable_since|dt }}){% endif %}</dd>
   <dt>transport</dt><dd>{% if host.transport == "push" %}push: its agent reports to the hub{% else %}pull: ssh as {{ host.ssh_user or cfg.collect.ssh_user }}{% endif %}</dd>
@@ -23,6 +40,7 @@
   {% if host.note %}<dt>note</dt><dd>{{ host.note }}</dd>{% endif %}
 </dl>
 
+{% if host.state != "retired" or drives %}
 <h2>Drives</h2>
 <div class="tbl"><table>
 <tr><th>status</th><th>dev</th><th>drive</th><th>serial</th><th class="num">size</th><th class="num" title="as the drive reports it, and in Fahrenheit">°C (°F)</th><th class="num">hours</th><th>read</th><th class="wrap">why</th></tr>
@@ -40,6 +58,7 @@
 </tr>
 {% else %}<tr><td colspan="9" class="muted">no drives seen on this host yet</td></tr>{% endfor %}
 </table></div>
+{% endif %}
 
 {% if retired %}
 <h2>Retired drives last seen here</h2>

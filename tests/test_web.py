@@ -341,3 +341,52 @@ def test_a_drive_that_runs_no_self_tests_says_so(
     page = client.get(f"/drive/{wd_id}").text.split("<dt>self-tests</dt>")[1].split("</dd>")[0]
     assert "This drive says it runs no self-tests" in page and "next short test" not in page
     assert "1 of 3 drives have a schedule" in client.get("/host/atlas").text, "it does not count as scheduled"
+
+
+def test_retiring_a_host_retires_what_was_on_it(
+    cfg: Config, factory: sessionmaker[Session], probe_env: ProbeEnv
+) -> None:
+    from drivecanary.hosts import retire
+    from drivecanary.models import DriveSighting
+
+    _populated(cfg, factory, probe_env)
+    (cfg.ssh_dir / "id_ed25519.pub").write_text("ssh-ed25519 AAAAtestkey drivecanary-hub@test\n")
+    write_ssh_material(cfg, [])
+    with factory() as s:
+        atlas = s.scalar(select(Host))
+        assert atlas is not None
+        assert retire(s, atlas) == (3, 3), "sda, sdb, nvme0; tank, backup and the btrfs pool"
+        assert retire(s, atlas) == (0, 0), "twice is once"
+        s.commit()
+        assert not s.scalars(select(DriveSighting).where(DriveSighting.current)).all()
+    client = TestClient(create_app(cfg), base_url="http://10.100.100.84:8080")
+    front = client.get("/").text
+    assert "atlas" not in front.split("<h2>Hosts</h2>")[0], "its drives and pools are off the front page"
+    assert "3 retired drives" in front
+    page = client.get("/host/atlas").text
+    assert (
+        "Retired: history is kept indefinitely, but data from this host is not collected. Bring it back with:" in page
+    )
+    assert "drivecanary host set atlas --state pending --address atlas.domain" in page
+    assert "deploy/host/install-host.sh atlas --hub-ip 10.100.100.84" in page and "AAAAtestkey" in page
+    assert "drivecanary host keyscan atlas --fingerprint SHA256:" in page
+    assert "<h2>Drives</h2>" not in page and "no drives seen" not in page
+    assert "<h2>Retired drives last seen here</h2>" in page and "WDC WD140EDFZ-11A0VA0" in page
+
+    # one that pushed is told how to push again
+    with factory() as s:
+        host = s.scalar(select(Host))
+        assert host is not None
+        host.transport = "push"
+        s.commit()
+    page = client.get("/host/atlas").text
+    assert "drivecanary host token atlas" in page
+    assert "install-host.sh atlas --push --hub-url http://10.100.100.84:8081 --token TOKEN" in page
+
+    # and the first report of one of its drives from anywhere brings that drive back
+    with factory() as s:
+        s.add(Host(name="hv", address="hv", tz="America/New_York"))
+        s.commit()
+    envelope = probe_env.run_gate("drivecanary-collect").stdout
+    collect(cfg, factory, runner=lambda h, a: SshResult(0, envelope, b""))
+    assert "retired drive" not in client.get("/").text, "seen on hv now: none of the three is retired"

@@ -229,15 +229,17 @@ def create_app(config: Config | None = None) -> FastAPI:
     def retired_page(request: Request, db: Db) -> HTMLResponse:
         return page(request, "retired.html", drives=queries.retired_drive_rows(db, cfg, utcnow()))
 
-    @app.get("/hosts", response_class=HTMLResponse)
-    def hosts_page(request: Request, db: Db) -> HTMLResponse:
-        ov = queries.overview(db, cfg)
+    def hub_identity(request: Request) -> dict[str, str | None]:
+        """What a host's install needs to know of this hub: its public key, and its address when the page was
+        asked for by a LAN address."""
         hub_key = cfg.hub_key_copy.read_text().strip() if cfg.hub_key_copy.is_file() else None
-        # the address this page was asked for is the hub's, when it was asked for by address
         asked = request.url.hostname or ""
         is_lan_ip = re.fullmatch(r"\d{1,3}(\.\d{1,3}){3}", asked) and not asked.startswith("127.")
-        hub_ip = asked if is_lan_ip else None
-        return page(request, "hosts.html", ov=ov, hub_key=hub_key, hub_ip=hub_ip)
+        return {"hub_key": hub_key, "hub_ip": asked if is_lan_ip else None}
+
+    @app.get("/hosts", response_class=HTMLResponse)
+    def hosts_page(request: Request, db: Db) -> HTMLResponse:
+        return page(request, "hosts.html", ov=queries.overview(db, cfg), **hub_identity(request))
 
     @app.get("/host/{ref}", response_class=HTMLResponse)
     def host_page(request: Request, db: Db, ref: str) -> HTMLResponse:
@@ -273,6 +275,7 @@ def create_app(config: Config | None = None) -> FastAPI:
             installed=installed,
             selftests=queries.host_selftests(db, cfg, host, utcnow()),
             retired=[d for d in queries.retired_drive_rows(db, cfg, utcnow()) if d.host and d.host.id == host.id],
+            **hub_identity(request),
             current=current,
             behind=behind,
         )
