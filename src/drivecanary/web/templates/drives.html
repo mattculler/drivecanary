@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block title %}drives · drivecanary{% endblock %}
+{% block content %}
+<h1>Drives</h1>
+{% with rows=ov.drives, show_host=true, empty="No drives yet. Add a host (drivecanary host add) and collect, or import attrlogs." %}{% include "_drives_table.html" %}{% endwith %}
+{% if ov.retired_drives %}<p class="muted"><a href="/drives/retired">{{ ov.retired_drives }} retired drive{{ 's' if ov.retired_drives != 1 }}</a></p>{% endif %}
+{% endblock %}

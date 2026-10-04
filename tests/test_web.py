@@ -33,6 +33,15 @@ def test_pages(cfg: Config, factory: sessionmaker[Session], probe_env: ProbeEnv)
     body = r.text
     assert "Hitachi HDS721050DLE630" in body and "fail" in body and "atlas" in body and "tank" in body
     assert body.index("Hitachi") < body.index("WDC WD140EDFZ"), "worst first"
+    assert "<h2>Drives</h2>" in body and "<h2>Pools</h2>" in body and "<h2>Hosts</h2>" in body, (
+        "the front page as it was"
+    )
+        "drives and pools have reasons to give; the hosts table has its own"
+    )
+    drives_page = client.get("/drives").text
+    assert "Hitachi HDS721050DLE630" in drives_page and "<h2>Pools</h2>" not in drives_page, "the drives table alone"
+    host = client.get("/host/atlas").text
+    assert '<th class="num" title="5 Reallocated_Sector_Ct">realloc</th>' in host, "the same table as the front page"
     assert "retired host" not in body and "No retired hosts." in client.get("/hosts/retired").text
     assert "finished 2026-09-14 08:12, took 5:12:33; no errors found" in body, "the scrub cell says what matters"
     assert "Rate:" not in body

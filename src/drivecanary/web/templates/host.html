@@ -45,47 +45,17 @@ drivecanary collect --host {{ host.name }}{% endif %}</pre>
 
 {% if host.state != "retired" or drives %}
 <h2>Drives</h2>
-<div class="tbl"><table>
-<tr><th>status</th><th>dev</th><th>drive</th><th>serial</th><th class="num">size</th><th class="num" title="as the drive reports it, and in Fahrenheit">°C (°F)</th><th class="num">hours</th><th>read</th><th class="wrap">why</th></tr>
-{% for d in drives %}{% set r = d.latest %}
-<tr class="r-{{ d.verdict.value }}">
-  <td>{% with v=d.verdict %}{% include "_badge.html" %}{% endwith %}</td>
-  <td>{{ d.dev_name or '' }}</td>
-  <td><span class="kind">{{ d.drive.kind }}</span><a href="/drive/{{ d.drive.id }}">{{ d.drive.label }}</a>{% with testing=d.testing %}{% include "_running.html" %}{% endwith %}</td>
-  <td class="muted">{{ d.drive.serial or d.drive.serial_key }}</td>
-  <td class="num">{{ d.drive.capacity_bytes|bytes }}</td>
-  <td class="num">{{ r.temp_c|tempcell if r else '' }}</td>
-  <td class="num">{{ r.power_on_hours|hourscell if r else '' }}</td>
-  <td class="muted">{{ r.collected_at|ago(now) if r else 'never' }}</td>
-  <td class="why">{{ d.reasons|join('; ') }}</td>
-</tr>
-{% else %}<tr><td colspan="9" class="muted">no drives seen on this host yet</td></tr>{% endfor %}
-</table></div>
+{% with rows=drives, show_host=false, empty="no drives seen on this host yet" %}{% include "_drives_table.html" %}{% endwith %}
 {% endif %}
 
 {% if retired %}
 <h2>Retired drives last seen here</h2>
-<div class="tbl"><table>
-<tr><th>last said</th><th>drive</th><th>serial</th><th class="num">size</th><th class="num">hours</th><th>last reading</th></tr>
-{% for d in retired %}{% set r = d.latest %}
-<tr><td>{% with v=d.verdict %}{% include "_badge.html" %}{% endwith %}</td>
-  <td><span class="kind">{{ d.drive.kind }}</span><a href="/drive/{{ d.drive.id }}">{{ d.drive.label }}</a></td>
-  <td class="muted">{{ d.drive.serial or d.drive.serial_key }}</td>
-  <td class="num">{{ d.drive.capacity_bytes|bytes }}</td>
-  <td class="num">{{ r.power_on_hours|hourscell if r else '' }}</td>
-  <td>{% if r %}{{ r.collected_at|dt }} <span class="muted">({{ r.source }})</span>{% endif %}</td></tr>
-{% endfor %}
-</table></div>
+{% with rows=retired, show_host=false %}{% include "_retired_drives_table.html" %}{% endwith %}
 {% endif %}
 
 {% if pools %}
 <h2>Pools</h2>
-<div class="tbl"><table>
-<tr><th>status</th><th>kind</th><th>pool</th><th>health</th><th class="wrap">why</th></tr>
-{% for p in pools %}{% set s = p.latest %}
-<tr><td>{% with v=p.verdict %}{% include "_badge.html" %}{% endwith %}</td><td><span class="kind">{{ p.pool.kind }}</span></td><td><a href="/pool/{{ p.pool.id }}">{{ p.pool.name }}</a>{% with scrubbing=p.scrubbing %}{% include "_running.html" %}{% endwith %}</td><td>{{ s.health if s else '' }}</td><td class="why">{{ (s.reasons or '').replace('\n', '; ') if s else '' }}</td></tr>
-{% endfor %}
-</table></div>
+{% with rows=pools, show_host=false %}{% include "_pools_table.html" %}{% endwith %}
 {% endif %}
 
 <h2>Syncs</h2>

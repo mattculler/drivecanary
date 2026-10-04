@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}retired · drivecanary{% endblock %}
+{% block content %}
+<h1>Retired</h1>
+<p class="muted">Kept for their history, and off the front page. A drive or host comes back the first time it reports again.</p>
+<h2>Drives</h2>
+{% with rows=retired_rows, show_host=true %}{% include "_retired_drives_table.html" %}{% endwith %}
+<h2>Hosts</h2>
+{% include "_retired_hosts_table.html" %}
+{% endblock %}

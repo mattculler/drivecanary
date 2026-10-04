@@ -65,8 +65,9 @@
 <body>
 <header>
   <a class="brand" href="/"><img src="/static/logo-tile.png" alt="">drivecanary</a>
-  <a href="/">drives</a>
+  <a href="/drives">drives</a>
   <a href="/hosts">hosts</a>
+  {% if has_retired %}<a href="/retired">retired</a>{% endif %}
   <a href="/runs">runs</a>
   <small>{{ version }}</small>
 </header>

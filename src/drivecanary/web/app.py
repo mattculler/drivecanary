@@ -169,8 +169,27 @@ def create_app(config: Config | None = None) -> FastAPI:
     templates.env.globals["version"] = __version__
     templates.env.globals["attr_label"] = lambda i: ATTR_LABELS.get(i, f"Attribute {i}")
 
+    def has_retired() -> bool:
+        """Whether the menu has a "retired" link: anything retired at all."""
+        with app.state.factory() as s:
+            drive = s.scalar(select(Drive.id).where(Drive.retired).limit(1))
+            host = s.scalar(select(Host.id).where(Host.state == "retired").limit(1))
+        return drive is not None or host is not None
+
     def page(request: Request, name: str, **ctx: Any) -> HTMLResponse:
-        return templates.TemplateResponse(request, name, {"cfg": cfg, "now": utcnow(), **ctx})
+        base = {"cfg": cfg, "now": utcnow(), "has_retired": has_retired()}
+        return templates.TemplateResponse(request, name, {**base, **ctx})
+
+    def retired_hosts(db: Session) -> dict[str, Any]:
+        """The retired hosts, and how many retired drives were last seen on each."""
+        drives: dict[int, int] = {}
+        for d in queries.retired_drive_rows(db, cfg, utcnow()):
+            if d.host is not None:
+                drives[d.host.id] = drives.get(d.host.id, 0) + 1
+        hosts = sorted(
+            (h for h in queries.overview(db, cfg).hosts if h.host.state == "retired"), key=lambda h: h.host.name
+        )
+        return {"hosts": hosts, "drives": drives}
 
     @app.get("/", response_class=HTMLResponse)
     def index(request: Request, db: Db) -> HTMLResponse:
@@ -239,13 +258,16 @@ def create_app(config: Config | None = None) -> FastAPI:
 
     @app.get("/hosts/retired", response_class=HTMLResponse)
     def retired_hosts_page(request: Request, db: Db) -> HTMLResponse:
-        ov = queries.overview(db, cfg)
-        drives: dict[int, int] = {}
-        for d in queries.retired_drive_rows(db, cfg, utcnow()):
-            if d.host is not None:
-                drives[d.host.id] = drives.get(d.host.id, 0) + 1
-        hosts = sorted((h for h in ov.hosts if h.host.state == "retired"), key=lambda h: h.host.name)
-        return page(request, "retired_hosts.html", hosts=hosts, drives=drives)
+        return page(request, "retired_hosts.html", **retired_hosts(db))
+
+    @app.get("/retired", response_class=HTMLResponse)
+    def retired_all_page(request: Request, db: Db) -> HTMLResponse:
+        retired_rows = queries.retired_drive_rows(db, cfg, utcnow())
+        return page(request, "retired_all.html", retired_rows=retired_rows, **retired_hosts(db))
+
+    @app.get("/drives", response_class=HTMLResponse)
+    def drives_page(request: Request, db: Db) -> HTMLResponse:
+        return page(request, "drives.html", ov=queries.overview(db, cfg))
 
     @app.get("/hosts", response_class=HTMLResponse)
     def hosts_page(request: Request, db: Db) -> HTMLResponse:

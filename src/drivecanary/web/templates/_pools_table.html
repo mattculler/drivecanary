@@ -1,0 +1,19 @@
+{# Pools. Give it rows (PoolRow) and show_host. #}
+<div class="tbl"><table>
+<tr><th>status</th>{% if show_host %}<th>host</th>{% endif %}<th>kind</th><th>pool</th><th>health</th><th class="num">read</th><th class="num">write</th><th class="num">cksum</th><th>scrub</th><th>read</th><th class="wrap">why</th></tr>
+{% for p in rows %}{% set s = p.latest %}
+<tr class="r-{{ p.verdict.value }}">
+  <td>{% with v=p.verdict %}{% include "_badge.html" %}{% endwith %}</td>
+  {% if show_host %}<td><a class="plain" href="/host/{{ p.host.name|urlencode }}">{{ p.host.name }}</a></td>{% endif %}
+  <td><span class="kind">{{ p.pool.kind }}</span></td>
+  <td><a href="/pool/{{ p.pool.id }}">{{ p.pool.name }}</a>{% with scrubbing=p.scrubbing %}{% include "_running.html" %}{% endwith %}</td>
+  <td>{{ s.health if s else '' }}</td>
+  <td class="num">{{ s.read_errors if s and s.read_errors is not none else '' }}</td>
+  <td class="num">{{ s.write_errors if s and s.write_errors is not none else '' }}</td>
+  <td class="num">{{ s.cksum_errors if s and s.cksum_errors is not none else '' }}</td>
+  <td class="why">{{ s.scrub|scrub(p.pool.kind) if s else '' }}</td>
+  <td class="muted">{{ s.collected_at|ago(now) if s else 'never' }}</td>
+  <td class="why">{{ (s.reasons or '').replace('\n', '; ') if s else '' }}</td>
+</tr>
+{% endfor %}
+</table></div>

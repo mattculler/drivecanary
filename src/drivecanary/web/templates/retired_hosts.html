@@ -3,15 +3,5 @@
 {% block content %}
 <h1>Retired hosts</h1>
 <p class="muted">Not collected from; kept so that their drives can say where they were. Each host's page says how to bring it back.</p>
-<div class="tbl"><table>
-<tr><th>host</th><th class="num">drives last seen there</th><th>last heard from</th><th class="wrap">note</th></tr>
-{% for h in hosts %}
-<tr><td><a href="/host/{{ h.host.name|urlencode }}">{{ h.host.name }}</a></td>
-  <td class="num">{{ drives.get(h.host.id, 0) }}</td>
-  <td class="muted">{{ h.host.last_success_at|dt if h.host.last_success_at else 'never by drivecanary' }}</td>
-  <td class="why">{{ h.host.note or '' }}</td></tr>
-{% else %}
-<tr><td colspan="4" class="muted">No retired hosts.</td></tr>
-{% endfor %}
-</table></div>
+{% include "_retired_hosts_table.html" %}
 {% endblock %}
