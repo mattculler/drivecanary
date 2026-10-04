@@ -314,4 +314,5 @@ def test_formatters() -> None:
     now = utcnow()
     assert fmt_ago(now - timedelta(minutes=5), now) == "5 min ago"
     assert fmt_ago(now - timedelta(hours=3), now) == "3.0 h ago"
-    assert fmt_ago(now - timedelta(days=4), now) == "4 d ago" and fmt_ago(None) == "never"
+    assert fmt_ago(now - timedelta(days=4), now) == "4 days ago" and fmt_ago(None) == "never"
+    assert fmt_ago(now - timedelta(days=3265), now) == "8.9 years ago", "a retired drive's 2017 reading"

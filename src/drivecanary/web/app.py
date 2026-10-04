@@ -62,7 +62,7 @@ def fmt_ago(dt: datetime | None, now: datetime | None = None) -> str:
         return f"{h * 60:.0f} min ago"
     if h < 48:
         return f"{h:.1f} h ago"
-    return f"{h / 24:.0f} d ago"
+    return f"{spelled(h)} ago"
 
 
 def fmt_temp(c: int | float | None) -> str:

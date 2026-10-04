@@ -140,7 +140,7 @@ def test_its_page(cfg: Config, factory: sessionmaker[Session]) -> None:
     page = TestClient(create_app(cfg)).get(f"/drive/{drive_id}")
     assert page.status_code == 200
     body = page.text
-    assert "TOSHIBA DT01ACA300" in body and "never seen by the collector" in body
+    assert "TOSHIBA DT01ACA300" in body and "never seen by the collector (history from a smartctl text capture)" in body
     assert "2017-10-26 23:17 EDT" in body and ">legacy<" in body and "Power_On_Hours" in body
     assert "the drive says its long test takes 6.0 hours" in body
 
@@ -163,4 +163,4 @@ def test_the_retired_drives_page(cfg: Config, factory: sessionmaker[Session]) ->
     assert "2017-10-26 23:17 EDT" in page and "(legacy)" in page and "no host on record" in page
     assert "29,545" in page and "3.4 years" in page, "the hours, and how long that is"
     assert 'class="badge v-ok"' in page and "badge v-stale" not in page, "what it last said, not that it went quiet"
-    assert '<a href="/drives/retired">retired drives</a>' in client.get(f"/drive/{ids[0]}").text
+    assert '(<a href="/drives/retired">all retired drives</a>)' in client.get(f"/drive/{ids[0]}").text
