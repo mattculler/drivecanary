@@ -1,9 +1,8 @@
 """OK / WARN / FAIL for one reading.
 
 SMART PASSED is necessary but not sufficient (a real 970 EVO fixture says passed with 7 media errors), so
-the verdict reads the exit bits, Backblaze's five counters, the NVMe health log and the temperature too
-(docs/transport-design-2026-09-28.md §5.9, audit F40). STALE is not decided here: it is a property of
-*when* the last reading was, and the page computes it.
+the verdict reads the exit bits, Backblaze's five counters, the NVMe health log and the temperature too.
+STALE is not decided here: it is a property of *when* the last reading was, and the page computes it.
 """
 
 from __future__ import annotations

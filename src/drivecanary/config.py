@@ -79,7 +79,7 @@ class PathsConfig(Section):
 
 
 class CollectConfig(Section):
-    """The pull: one ssh per host, the probe on the other end (docs/transport-design-2026-09-28.md)."""
+    """The pull: one ssh per host, the probe on the other end (deploy/README.md)."""
 
     parallel: int = Field(
         default=4,

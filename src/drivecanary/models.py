@@ -1,9 +1,8 @@
 """SQLAlchemy models. Timestamps are aware UTC datetimes stored as epoch seconds (`Epoch`).
 
-The shape (docs/transport-design-2026-09-28.md §5): a drive is a thing with a serial; where it is plugged
-in is a *sighting*; every reading of it is a *smart_run* with its attributes broken out into *attr_sample*
-rows for trends; a host's every collection is an *attempt* with a reason when it failed, so silence always
-has a cause on record.
+The shape: a drive is a thing with a serial; where it is plugged in is a *sighting*; every reading of it is a
+*smart_run* with its attributes broken out into *attr_sample* rows for trends; a host's every collection is an
+*attempt* with a reason when it failed, so silence always has a cause on record.
 """
 
 from __future__ import annotations

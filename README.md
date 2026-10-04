@@ -4,9 +4,7 @@
 
 Drive health for a home LAN: SMART, pool state and trends from every host, on one page. A hub VM pulls from
 each host over ssh once an hour, keeps every reading in one SQLite file, and shows what is failing, what is
-about to, and what has not been heard from. Formerly pyvmind: `docs/audit-2026-09-28.md` is the audit that
-led to the rebuild and `docs/transport-design-2026-09-28.md` the collection design; both are worth a read
-before changing how collection works.
+about to, and what has not been heard from. Formerly pyvmind, a 2017 Flask app rebuilt from scratch in 2026.
 
 ## How it fits together
 
@@ -46,7 +44,7 @@ the Makefile exports `dev/config.toml` for you.
 export DRIVECANARY_CONFIG=dev/config.toml
 uv run drivecanary config check
 uv run drivecanary host add atlas --address atlas.domain --tz America/New_York --no-keyscan
-uv run drivecanary import attrlog data/attrlogs/atlas/*.csv --host atlas      # 2.8 years in ~20 s
+uv run drivecanary import attrlog path/to/attrlog.*.csv --host atlas          # smartd's history, ~6k lines/s
 uv run drivecanary status
 uv run drivecanary web serve                                                  # http://127.0.0.1:8080/
 uv run drivecanary collect --host atlas                                       # needs the host set up: deploy/README.md
@@ -72,12 +70,10 @@ identity smartctl knows (model family, firmware, WWN, capacity), the pools, and 
 - `deploy/` — the VM install (`install.sh`, `update.sh`, `backup.sh`, units) and `deploy/host/` — what goes
   on each monitored host (`probe`, `gate`, `agent`, `sudoers`, `install-host.sh`). See `deploy/README.md`.
 - `scripts/make_icons.py` — cuts the page's icons from `docs/logo.jpg` (run by hand when the logo changes).
-- `data/attrlogs/` — attrlog CSVs pulled by hand from hosts (atlas's, in their own commit);
-  `data/legacy-smartctl-text/` — two 2017 `smartctl -a` captures from storage1 and storage2, kept as history.
 - `tests/fixtures/smartctl/` — real `smartctl -j` captures (from Scrutiny's test data, MIT) covering ATA,
   SATA SSD, NVMe, SAS, a USB bridge, a failing drive and an open failure.
 
 ## Not yet
 
-NVMe attribute logs and scheduled NVMe self-tests (smartd does both only from smartmontools 7.5), an importer for the two 2017 text
-captures, and hosts other than Debian and OPNsense. Alerting is smartd's job on each host (`-M exec`), not the hub's.
+NVMe attribute logs and scheduled NVMe self-tests (smartd does both only from smartmontools 7.5), and hosts
+other than Debian and OPNsense. Alerting is smartd's job on each host (`-M exec`), not the hub's.

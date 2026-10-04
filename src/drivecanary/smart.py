@@ -1,6 +1,6 @@
 """What one `smartctl -j -x` says, as a flat record.
 
-smartctl's JSON is the only parser input; the old text scraper is gone (docs/audit-2026-09-28.md §6).
+smartctl's JSON is the only parser input; pyvmind's old text scraper is gone.
 Everything here is `.get`-tolerant: a field that a smartctl version or a device type does not have is None,
 never a crash, and the exit status and messages travel with the sample so a failed invocation is stored as
 a failure rather than as a healthy blank.
