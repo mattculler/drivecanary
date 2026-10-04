@@ -33,6 +33,7 @@ def test_pages(cfg: Config, factory: sessionmaker[Session], probe_env: ProbeEnv)
     body = r.text
     assert "Hitachi HDS721050DLE630" in body and "fail" in body and "atlas" in body and "tank" in body
     assert body.index("Hitachi") < body.index("WDC WD140EDFZ"), "worst first"
+    assert "retired host" not in body and "No retired hosts." in client.get("/hosts/retired").text
     assert "finished 2026-09-14 08:12, took 5:12:33; no errors found" in body, "the scrub cell says what matters"
     assert "Rate:" not in body
     r = client.get("/hosts")

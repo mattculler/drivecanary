@@ -74,4 +74,5 @@
 
 <h2>Hosts</h2>
 {% include "_hosts_table.html" %}
+{% if ov.retired_hosts %}<p class="muted"><a href="/hosts/retired">{{ ov.retired_hosts }} retired host{{ 's' if ov.retired_hosts != 1 }}</a></p>{% endif %}
 {% endblock %}

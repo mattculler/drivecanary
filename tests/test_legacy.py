@@ -200,9 +200,12 @@ def test_the_host_a_capture_came_from(tmp_path: Path, cfg: Config) -> None:
     front = client.get("/").text
     summary = front.split('<section class="summary">')[1].split("</section>")[0]
     assert "storage1" not in front and "skipped" not in summary, "history, not status"
+    assert '<a href="/hosts/retired">2 retired hosts</a>' in front, "under the hosts table"
     hosts_page = client.get("/hosts").text
-    assert "<h2>Retired hosts</h2>" in hosts_page and "never by drivecanary" in hosts_page
-    assert hosts_page.index("storage1") > hosts_page.index("<h2>Retired hosts</h2>"), "not in the live table"
+    assert "storage1" not in hosts_page and '<a href="/hosts/retired">2 retired hosts</a>' in hosts_page
+    retired_hosts = client.get("/hosts/retired").text
+    assert "never by drivecanary" in retired_hosts and retired_hosts.index("storage1") < retired_hosts.index("storage2")
+    assert '<td class="num">1</td>' in retired_hosts, "one drive last seen on each"
     host_page = client.get("/host/storage1").text
     assert "Retired: history is kept indefinitely" in host_page and "<dt>self-tests</dt>" not in host_page
     assert "<h2>Retired drives last seen here</h2>" in host_page and "TOSHIBA DT01ACA300" in host_page

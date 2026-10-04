@@ -237,6 +237,16 @@ def create_app(config: Config | None = None) -> FastAPI:
         is_lan_ip = re.fullmatch(r"\d{1,3}(\.\d{1,3}){3}", asked) and not asked.startswith("127.")
         return {"hub_key": hub_key, "hub_ip": asked if is_lan_ip else None}
 
+    @app.get("/hosts/retired", response_class=HTMLResponse)
+    def retired_hosts_page(request: Request, db: Db) -> HTMLResponse:
+        ov = queries.overview(db, cfg)
+        drives: dict[int, int] = {}
+        for d in queries.retired_drive_rows(db, cfg, utcnow()):
+            if d.host is not None:
+                drives[d.host.id] = drives.get(d.host.id, 0) + 1
+        hosts = sorted((h for h in ov.hosts if h.host.state == "retired"), key=lambda h: h.host.name)
+        return page(request, "retired_hosts.html", hosts=hosts, drives=drives)
+
     @app.get("/hosts", response_class=HTMLResponse)
     def hosts_page(request: Request, db: Db) -> HTMLResponse:
         return page(request, "hosts.html", ov=queries.overview(db, cfg), **hub_identity(request))

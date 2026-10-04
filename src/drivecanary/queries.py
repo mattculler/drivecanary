@@ -97,6 +97,7 @@ class Overview:
     hosts_ok: int = 0
     last_heard: datetime | None = None  # the newest word from any host
     retired_drives: int = 0  # kept for their history, off this page
+    retired_hosts: int = 0
 
     @property
     def testing(self) -> int:
@@ -270,6 +271,7 @@ def overview(session: Session, cfg: Config, now: datetime | None = None) -> Over
         hosts_ok=sum(1 for h in watched if h.verdict == Verdict.OK),
         last_heard=max(heard) if heard else None,
         retired_drives=session.scalar(select(func.count(Drive.id)).where(Drive.retired)) or 0,
+        retired_hosts=sum(1 for h in hosts if h.host.state == HostState.RETIRED.value),
     )
 
 
