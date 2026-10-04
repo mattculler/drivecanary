@@ -316,3 +316,28 @@ def test_formatters() -> None:
     assert fmt_ago(now - timedelta(hours=3), now) == "3.0 h ago"
     assert fmt_ago(now - timedelta(days=4), now) == "4 days ago" and fmt_ago(None) == "never"
     assert fmt_ago(now - timedelta(days=3265), now) == "8.9 years ago", "a retired drive's 2017 reading"
+
+
+def test_a_drive_that_runs_no_self_tests_says_so(
+    cfg: Config, factory: sessionmaker[Session], probe_env: ProbeEnv
+) -> None:
+    import json
+    import zlib
+
+    from drivecanary.models import SmartRun
+
+    _populated(cfg, factory, probe_env)
+    with factory() as s:
+        wd = s.scalar(select(Drive).where(Drive.model == "WDC WD140EDFZ-11A0VA0"))
+        assert wd is not None
+        run = s.scalar(select(SmartRun).where(SmartRun.drive_id == wd.id, SmartRun.raw_json.is_not(None)))
+        assert run is not None and run.raw_json is not None
+        doc = json.loads(zlib.decompress(run.raw_json))
+        doc["ata_smart_data"]["capabilities"]["self_tests_supported"] = False
+        run.raw_json = zlib.compress(json.dumps(doc).encode())
+        s.commit()
+        wd_id = wd.id
+    client = TestClient(create_app(cfg))
+    page = client.get(f"/drive/{wd_id}").text.split("<dt>self-tests</dt>")[1].split("</dd>")[0]
+    assert "This drive says it runs no self-tests" in page and "next short test" not in page
+    assert "1 of 3 drives have a schedule" in client.get("/host/atlas").text, "it does not count as scheduled"

@@ -30,7 +30,8 @@
   <dt>self-tests</dt><dd>
     {% if latest and latest.selftest_last %}last: {% if report and report.selftest_type %}{{ report.selftest_type }}, {% endif %}{{ latest.selftest_last }}{% if report and report.selftest_age_hours is not none %}, {{ '{:,}'.format(report.selftest_age_hours) }} power-on hours{% if report.selftest_age_hours|spelled %} ({{ report.selftest_age_hours|spelled }}){% endif %} ago{% endif %}{% else %}<span class="muted">none in the log</span>{% endif %}
     {% if report and report.long_test_minutes %} · the drive says its long test takes {{ report.long_test_minutes|taking }}{% endif %}
-    {% if selftest and selftest.entry %}
+    {% if report and report.selftests_supported is false %}<div class="muted">This drive says it runs no self-tests (smartctl finds no self-test support), so no schedule applies to it and none is late.</div>
+    {% elif selftest and selftest.entry %}
     <div>next short test {{ selftest.entry.next.short.strftime("%a %Y-%m-%d %H:00") if selftest.entry.next.short else "<span class=muted>never</span>"|safe }}, next long test {{ selftest.entry.next.long.strftime("%a %Y-%m-%d %H:00") if selftest.entry.next.long else "<span class=muted>never</span>"|safe }}
       <span class="muted">({{ selftest.host.name }}'s clock, {{ selftest.host.tz or cfg.collect.default_tz }})</span>
       {% if selftest.runs_it %}<span class="problem">{{ selftest.runs_it }}</span>{% endif %}</div>

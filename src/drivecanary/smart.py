@@ -243,6 +243,7 @@ class SmartReport:
     selftest_hours: int | None = None  # the power-on hour it ran at
     selftest_progress: int | None = None  # percent done of a self-test running now; None when none is
     long_test_minutes: int | None = None  # what the drive says its long self-test takes
+    selftests_supported: bool | None = None  # False: an ATA drive that says it runs no self-tests at all
     #: ATA device statistics, "Percentage Used Endurance Indicator": the one wear figure that means the same
     #: on every vendor's SATA SSD, as percentage_used does on NVMe
     endurance_used: int | None = None
@@ -392,6 +393,8 @@ def parse_report(doc: dict[str, Any]) -> SmartReport:
         left = _int(running.get("remaining_percent"))
         r.selftest_progress = max(0, min(100, 100 - left)) if left is not None else 0
     r.long_test_minutes = _int(_get(doc, "ata_smart_data", "self_test", "polling_minutes", "extended"))
+    supported = _get(doc, "ata_smart_data", "capabilities", "self_tests_supported")
+    r.selftests_supported = supported if isinstance(supported, bool) else None
     now_testing = _get(doc, "nvme_self_test_log", "current_self_test_operation") or {}
     if isinstance(now_testing, dict) and _int(now_testing.get("value")):
         r.selftest_progress = _int(_get(doc, "nvme_self_test_log", "current_self_test_completion_percent")) or 0

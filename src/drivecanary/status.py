@@ -86,7 +86,8 @@ def judge_report(r: SmartReport, cfg: StatusConfig, *, scheduled: bool = False) 
         else:
             v.warn(f"the self-test log has failed tests ({last or 'see the log'})")
     age = r.selftest_age_hours
-    if scheduled and cfg.selftest_max_age_days:
+    # a drive that runs no self-tests has none to be late with, whatever the schedule says
+    if scheduled and cfg.selftest_max_age_days and r.selftests_supported is not False:
         if age is not None and age > cfg.selftest_max_age_days * 24:
             v.warn(f"no self-test for {age // 24} days of power-on time, though one is scheduled every month")
         elif age is None and (r.power_on_hours or 0) > cfg.selftest_max_age_days * 24:

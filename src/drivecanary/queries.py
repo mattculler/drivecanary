@@ -420,6 +420,7 @@ class SelftestRow:
     last_age_hours: int | None  # in power-on time
     long_takes_minutes: int | None  # by the drive's own word
     testing: int | None
+    cannot_test: bool = False  # the drive says it runs no self-tests: no schedule applies
 
     @property
     def runs_it(self) -> str | None:
@@ -446,15 +447,17 @@ def _selftest_row(
     last = None
     if report is not None and report.selftest_last:
         last = f"{report.selftest_type}: {report.selftest_last}" if report.selftest_type else report.selftest_last
+    cannot = report is not None and report.selftests_supported is False
     return SelftestRow(
         host=host,
         drive=s.drive,
         dev_name=s.dev_name,
-        entry=entry if entry is not None and entry.regex else None,
+        entry=entry if entry is not None and entry.regex and not cannot else None,
         last=last,
         last_age_hours=report.selftest_age_hours if report is not None else None,
         long_takes_minutes=report.long_test_minutes if report is not None else None,
         testing=running_selftest(session, s.drive_id, cfg, now),
+        cannot_test=cannot,
     )
 
 

@@ -120,6 +120,14 @@ def test_a_schedule_that_has_stopped_is_noticed() -> None:
     v, why = judge_report(parse_report(never), CFG, scheduled=True)
     assert v == Verdict.WARN and why == ["no self-test in the log at all, though one is scheduled every month"]
     assert judge_report(parse_report(never), CFG)[0] == Verdict.OK, "nothing scheduled: an empty log is nothing"
+    cannot = load_json("smart-ata-full.json")
+    cannot["ata_smart_self_test_log"]["extended"]["table"] = []
+    assert judge_report(parse_report(cannot), CFG, scheduled=True)[0] == Verdict.WARN
+    cannot["ata_smart_data"]["capabilities"]["self_tests_supported"] = False
+    r = parse_report(cannot)
+    assert r.selftests_supported is False and parse_report(load_json("smart-ata.json")).selftests_supported is True
+    assert judge_report(r, CFG, scheduled=True)[0] == Verdict.OK, "a drive that runs no self-tests is not late with one"
+    assert parse_report(load_json("smart-nvme.json")).selftests_supported is None
     never["power_on_time"]["hours"] = 100
     assert judge_report(parse_report(never), CFG, scheduled=True)[0] == Verdict.OK, "too young to have had its first"
 
