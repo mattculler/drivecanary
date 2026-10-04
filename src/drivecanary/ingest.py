@@ -16,7 +16,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from drivecanary import attrlog
-from drivecanary.config import Config
+from drivecanary.config import Config, StatusConfig
 from drivecanary.envelope import Envelope, Frame
 from drivecanary.logging import get_logger
 from drivecanary.models import (
@@ -231,12 +231,41 @@ def _store_report(
         session.delete(dup)
         session.flush()
     scheduled = is_scheduled(host.smartd_conf, dev_name, drive.serial_key)
-    verdict, reasons = judge_report(report, cfg.status, scheduled=scheduled)
-    run = SmartRun(
-        drive_id=drive.id,
+    store_run(
+        session,
+        drive,
+        report,
+        source=SampleSource.SMARTCTL,
+        collected_at=collected_at,
         host_id=host.id,
         attempt_id=attempt.id,
-        source=SampleSource.SMARTCTL.value,
+        raw=raw,
+        cfg=cfg.status,
+        scheduled=scheduled,
+    )
+    return True
+
+
+def store_run(
+    session: Session,
+    drive: Drive,
+    report: SmartReport,
+    *,
+    source: SampleSource,
+    collected_at: datetime,
+    host_id: int | None,
+    attempt_id: int | None,
+    raw: bytes,
+    cfg: StatusConfig,
+    scheduled: bool = False,
+) -> SmartRun:
+    """One reading, judged and stored with its attributes broken out for the trends."""
+    verdict, reasons = judge_report(report, cfg, scheduled=scheduled)
+    run = SmartRun(
+        drive_id=drive.id,
+        host_id=host_id,
+        attempt_id=attempt_id,
+        source=source.value,
         collected_at=collected_at,
         exit_status=report.exit_status,
         passed=report.passed,
@@ -286,7 +315,7 @@ def _store_report(
                 prefail=a.prefail,
             )
         )
-    return True
+    return run
 
 
 # --------------------------------------------------------------------------- pools
