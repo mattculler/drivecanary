@@ -24,6 +24,11 @@
 # is tried with `smartd -q showtests` before it replaces the old one.
 # FreeBSD (OPNsense): there is no smartd running, so cron starts the tests (/usr/local/etc/cron.d), and the
 # schedule is written in smartd.conf's words to selftests.conf for the hub to read.
+#
+# apply also catches up: a SATA drive whose last self-test is older than the hub would have it (45 days of
+# power-on time, or none at all on a drive older than that) would show a warning until the 17th. It gets a
+# short test now instead, one drive at a time, in the background (the system log says how each went:
+# tag drivecanary-selftest). A drive asleep is left asleep; its first scheduled test will do.
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 LC_ALL=C
 export PATH LC_ALL
@@ -42,6 +47,9 @@ SHORT_DAY=17
 LONG_HOUR=01
 # every month's 19th and 24th, in an order that keeps the first few drives months apart
 LONG_SLOTS="01/19 07/19 04/19 10/19 02/24 08/24 05/24 11/24 03/19 09/19 06/19 12/19 01/24 07/24 04/24 10/24 02/19 08/19 05/19 11/19 03/24 09/24 06/24 12/24"
+# the hub's [status].selftest_max_age_days, in hours: how old a last test may be before the hub warns
+CATCHUP_HOURS=${DRIVECANARY_CATCHUP_HOURS:-1080}
+CATCHUP_POLL=${DRIVECANARY_CATCHUP_POLL:-30}
 SHORT_HOURS="01 02 03 04 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19 20 21 22 23"
 umask 022
 case "${1:-}" in ''|help|--help|-h)
@@ -72,6 +80,58 @@ drives() { # one "ID DEVICE" per drive that can be given a test
   done | sort | awk '!seen[$1]++ { print $2 }' | while read -r link; do
     talks "$link" && echo "${link##*/} $link"
   done
+}
+
+overdue() { # overdue DEVICE: the hub would warn that this drive's schedule has not run
+  out=$(smartctl -j -n standby -A -l selftest "$1" 2>/dev/null)
+  case "$out" in *'"protocol": "ATA"'*) ;; *) return 1 ;; esac  # asleep, or not a drive whose log is read
+  poh=$(printf '%s\n' "$out" | awk '/"power_on_time"/ { f = 1 } f && /"hours"/ { gsub(/[^0-9]/, ""); print; exit }')
+  [ -n "$poh" ] || return 1
+  last=$(printf '%s\n' "$out" | awk '/"lifetime_hours"/ { gsub(/[^0-9]/, ""); print; exit }')
+  if [ -z "$last" ]; then
+    [ "$poh" -gt "$CATCHUP_HOURS" ]
+    return
+  fi
+  # the log counts the hour in sixteen bits: 42 on a drive of 65,592 hours was 14 hours ago
+  [ $(( (poh - last + 65536) % 65536 )) -gt "$CATCHUP_HOURS" ]
+}
+
+# one drive after another: a test ends before the next starts, so no two drives of a pool test at once
+RUNNER='
+for dev; do
+  smartctl -t short "$dev" 2>&1 | grep -iE "test|error|abort" | logger -t drivecanary-selftest
+  sleep "$POLL"
+  i=0
+  while [ $i -lt 120 ] && smartctl -c "$dev" 2>/dev/null | grep -qi "in progress"; do sleep "$POLL"; i=$((i + 1)); done
+  echo "$dev: short test done" | logger -t drivecanary-selftest
+done'
+
+catch_up() { # $1: start, or show
+  : > "$TMP/overdue"
+  while read -r id dev; do overdue "$dev" && echo "$dev" >> "$TMP/overdue"; done < "$TMP/drives"
+  [ -s "$TMP/overdue" ] || return 0
+  if [ "$1" = show ]; then
+    echo "selftests: apply would start a short test now on (no self-test in $((CATCHUP_HOURS / 24)) days of power-on time):"
+    sed 's/^/  /' "$TMP/overdue"
+    return 0
+  fi
+  echo "selftests: no self-test in $((CATCHUP_HOURS / 24)) days of power-on time; a short test now on each, one at a time:"
+  sed 's/^/  /' "$TMP/overdue"
+  # shellcheck disable=SC2046
+  if [ -n "${DRIVECANARY_CATCHUP_FOREGROUND:-}" ]; then
+    POLL=$CATCHUP_POLL sh -c "$RUNNER" sh $(cat "$TMP/overdue")
+  elif command -v systemd-run >/dev/null 2>&1; then
+    # a unit of its own outlives the ssh session that started it; its name keeps a second from starting
+    if systemd-run --quiet --collect --unit=drivecanary-selftest-catchup --setenv=POLL="$CATCHUP_POLL" \
+      sh -c "$RUNNER" sh $(cat "$TMP/overdue"); then
+      echo "selftests: started (a few minutes a drive): journalctl -t drivecanary-selftest says how each went"
+    else
+      echo "selftests: not started: a catch-up is already running (systemctl status drivecanary-selftest-catchup)" >&2
+    fi
+  else
+    POLL=$CATCHUP_POLL nohup sh -c "$RUNNER" sh $(cat "$TMP/overdue") >/dev/null 2>&1 &
+    echo "selftests: started in the background (a few minutes a drive); the system log has each result"
+  fi
 }
 
 free_of() { # free_of COLUMN CANDIDATES...: the first candidate no drive has yet
@@ -117,7 +177,7 @@ keep_state() {
 if [ "$OS" = FreeBSD ]; then
   OPTIONS=""
   case "$ACTION" in
-    show) plan; cat "$TMP/lines" ;;
+    show) plan; cat "$TMP/lines"; catch_up show ;;
     remove) rm -f "$CONF" "$CRON"; echo "selftests: removed" ;;
     apply)
       plan
@@ -137,7 +197,8 @@ if [ "$OS" = FreeBSD ]; then
         done < "$TMP/drives"
       } > "$CRON"
       chmod 0644 "$CONF" "$CRON"
-      cat "$TMP/lines" ;;
+      cat "$TMP/lines"
+      catch_up start ;;
     *) echo "selftests: apply, remove or show" >&2; exit 64 ;;
   esac
   exit 0
@@ -153,7 +214,7 @@ fi
 # the directives DEVICESCAN has, which every drive keeps, less a schedule if it had one
 OPTIONS=$(printf '%s\n' "$scan" | sed -E 's/^[[:space:]]*DEVICESCAN[[:space:]]*//; s/(^|[[:space:]])-s[[:space:]]+[^[:space:]]+//')
 case "$ACTION" in
-  show) plan; cat "$TMP/lines"; exit 0 ;;
+  show) plan; cat "$TMP/lines"; catch_up show; exit 0 ;;
   remove)
     without_block "$CONF" > "$TMP/conf"
     if cmp -s "$TMP/conf" "$CONF"; then echo "selftests: nothing of drivecanary's is in $CONF"; exit 0; fi ;;
@@ -181,5 +242,5 @@ cat "$TMP/conf" > "$CONF"
 [ "$ACTION" = apply ] && keep_state
 systemctl restart smartd 2>/dev/null || systemctl restart smartmontools 2>/dev/null \
   || echo "selftests: $CONF is written, but smartd could not be restarted: do that by hand" >&2
-if [ "$ACTION" = apply ]; then cat "$TMP/lines"; else echo "selftests: removed"; fi
+if [ "$ACTION" = apply ]; then cat "$TMP/lines"; catch_up start; else echo "selftests: removed"; fi
 exit 0

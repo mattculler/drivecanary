@@ -127,6 +127,12 @@ to `smartd -q showtests` before it replaces the old, which is kept as `smartd.co
 `/etc/drivecanary/selftests` remembers which dates a drive has, so that adding a drive moves no other.
 `/usr/local/lib/drivecanary/selftests show` prints what it would write and changes nothing.
 
+A drive that has had no self-test in 45 days of power-on time (none at all, on a drive older than that)
+would be a warning on its page until its first scheduled test, so the same run starts a short test on it
+straight away: one drive after another, never two at once, in the background (`journalctl -t
+drivecanary-selftest` says how each went). A drive asleep is left asleep. `selftests show` lists which
+drives that would be.
+
 What it cannot do:
 
 - **A scrub started by hand, or by a timer of your own, is not seen.** smartd looks at the clock and at the

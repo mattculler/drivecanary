@@ -2,16 +2,18 @@
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 from datetime import datetime
 from itertools import pairwise
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 from drivecanary import selftests
-from tests.conftest import HOST_DIR, _shim
+from tests.conftest import HOST_DIR, _shim, load_json
 
 NOW = datetime(2026, 9, 29, 10, 30)
 
@@ -31,7 +33,16 @@ class Box:
         for d in (self.byid, self.bin, root / "dev"):
             d.mkdir()
         _shim(self.bin / "uname", f"echo {system}\n")
-        _shim(self.bin / "smartctl", 'case "$*" in *silent*) exit 2 ;; esac\nexit 0\n')
+        (root / "smart").mkdir()
+        _shim(
+            self.bin / "smartctl",
+            "for last; do :; done\n"
+            'case "$*" in *silent*) exit 2 ;; esac\n'
+            f'case "$*" in *"-t short"*) echo "$last" >> "{root}/started"; echo "Testing has begun."; exit 0 ;; esac\n'
+            f'case "$*" in *-j*) f="{root}/smart/${{last##*/}}.json"; [ -f "$f" ] && cat "$f" ;; esac\n'
+            "exit 0\n",
+        )
+        _shim(self.bin / "logger", f'cat >> "{root}/syslog"\n')
         _shim(self.bin / "smartd", f'cp "$4" "{root}/tried"\necho "showtests: ok"\n')
         _shim(self.bin / "systemctl", f'echo "$*" >> "{root}/systemctl"\n')
         _shim(self.bin / "sysctl", "echo ada0 ada1 nda0 cd0\n")
@@ -56,8 +67,19 @@ class Box:
             DRIVECANARY_SELFTEST_STATE=str(self.state),
             DRIVECANARY_BYID=str(self.byid),
             DRIVECANARY_SELFTEST_CRON=str(self.cron),
+            DRIVECANARY_CATCHUP_FOREGROUND="1",
+            DRIVECANARY_CATCHUP_POLL="0",
         )
         return subprocess.run(["sh", str(self.script), action], env=env, capture_output=True, text=True, check=False)
+
+    def says(self, link: str, doc: dict[str, Any] | None) -> None:
+        """What `smartctl -j` says of a drive; None: nothing, as of a drive asleep."""
+        if doc is not None:
+            (self.root / "smart" / f"{link}.json").write_text(json.dumps(doc, indent=2))
+
+    def started(self) -> list[str]:
+        f = self.root / "started"
+        return [line.rsplit("/", 1)[-1] for line in f.read_text().splitlines()] if f.exists() else []
 
     def schedules(self) -> dict[str, str]:
         return {e.device.rsplit("/", 1)[-1]: e.regex or "" for e in selftests.parse(self.conf.read_text())}
@@ -170,3 +192,45 @@ def test_on_opnsense_cron_starts_the_tests(tmp_path: Path) -> None:
     assert "0\t02\t17\t*\t*\troot\tsmartctl -t short /dev/ada1" in cron
     assert "0\t01\t19\t07\t*\troot\tsmartctl -t long /dev/ada1" in cron
     assert b.run("remove").returncode == 0 and not b.cron.exists() and not b.conf.exists()
+
+
+def _tested(hours_ago: int | None, power_on: int = 14551) -> dict[str, Any]:
+    """A SATA drive's reading: its last self-test that many power-on hours ago, or none in its log."""
+    doc = load_json("smart-ata-full.json")
+    doc["power_on_time"]["hours"] = power_on
+    table = doc["ata_smart_self_test_log"]["extended"]["table"]
+    if hours_ago is None:
+        doc["ata_smart_self_test_log"]["extended"]["table"] = []
+    else:
+        table[0]["lifetime_hours"] = (power_on - hours_ago) % 65536
+    return doc
+
+
+def test_apply_starts_a_short_test_where_the_hub_would_warn(box: Box) -> None:
+    box.says("ata-ST20000NM007D-3DJ103_ZXA00001", _tested(1500))  # 62 days: overdue
+    box.says("ata-ST20000NM007D-3DJ103_ZXA00003", _tested(500))  # 21 days: fine
+    box.says("scsi-35000c500a1b2c3d4", _tested(None))  # never, and 606 days on: overdue
+    box.says("ata-silent_bridge_000", _tested(None))  # cannot be talked to: not scheduled, not tested
+    cp = box.run("show")
+    assert cp.returncode == 0 and "apply would start a short test now on" in cp.stdout and not box.started()
+    cp = box.run("apply")
+    assert cp.returncode == 0, cp.stderr
+    assert box.started() == ["ata-ST20000NM007D-3DJ103_ZXA00001", "scsi-35000c500a1b2c3d4"], "in turn, the fine one not"
+    assert "no self-test in 45 days of power-on time; a short test now on each, one at a time" in cp.stdout
+    assert (box.root / "syslog").read_text().count("short test done") == 2
+
+
+def test_no_catching_up_for_a_young_drive_a_wrapped_log_or_a_sleeping_one(box: Box) -> None:
+    box.says("ata-ST20000NM007D-3DJ103_ZXA00001", _tested(None, power_on=300))  # new: its first is to come
+    box.says("ata-ST20000NM007D-3DJ103_ZXA00003", _tested(14, power_on=65592))  # hour 65,578 logged as 42
+    # scsi-35000c500a1b2c3d4 says nothing: asleep
+    assert box.run("apply").returncode == 0 and box.started() == []
+    assert "short test now" not in box.run("apply").stdout
+
+
+def test_on_opnsense_too(tmp_path: Path) -> None:
+    b = Box(tmp_path, "FreeBSD")
+    b.says("ada1", _tested(2000))
+    cp = b.run("apply")
+    assert cp.returncode == 0, cp.stderr
+    assert b.started() == ["ada1"]
