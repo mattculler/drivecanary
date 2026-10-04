@@ -1,0 +1,55 @@
+#!/bin/sh
+# Keep what is yours out of the repository: your hosts' names, your addresses, your drives' serials, your
+# accounts. They belong in the unversioned config that holds them already (/etc/drivecanary/config.toml on the
+# hub, ~/.config/drivecanary/hosts/ on the workstation), and in examples and tests the placeholders stand in
+# for them. The list of what is yours is never committed either: it is
+#   ${DRIVECANARY_PRIVATE_PATTERNS:-$HOME/.config/drivecanary/private-patterns}
+# one extended regular expression a line (grep -E, case-sensitive); blank lines and lines starting # are skipped.
+#
+#   scripts/check-private              the lines the staged change adds (the pre-commit hook)
+#   scripts/check-private --message F  a commit message (the commit-msg hook)
+#   scripts/check-private --history    every file and every message ever committed, on every branch
+#
+# As hooks:  ln -s ../../scripts/check-private .git/hooks/pre-commit
+#            printf '#!/bin/sh\nexec scripts/check-private --message "$1"\n' > .git/hooks/commit-msg
+#            chmod +x .git/hooks/commit-msg
+set -eu
+LIST=${DRIVECANARY_PRIVATE_PATTERNS:-$HOME/.config/drivecanary/private-patterns}
+case "${1:-}" in -h|--help|help) sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;; esac
+if [ ! -f "$LIST" ]; then
+  echo "check-private: no list at $LIST, so nothing is checked (scripts/check-private --help)" >&2
+  exit 0
+fi
+PATTERNS=$(mktemp)
+trap 'rm -f "$PATTERNS"' EXIT
+grep -vE '^[[:space:]]*(#|$)' "$LIST" > "$PATTERNS" || true
+[ -s "$PATTERNS" ] || exit 0
+
+refuse() { # what: where it was found
+  echo "check-private: $1 has what $LIST says is yours:" >&2
+  sed 's/^/  /' >&2
+  exit 1
+}
+
+case "${1:-}" in
+  --message)
+    found=$(grep -v '^#' "$2" | grep -nEf "$PATTERNS" || true)
+    [ -z "$found" ] || printf '%s\n' "$found" | refuse "the commit message" ;;
+  --history)
+    files=$(for rev in $(git rev-list --all); do
+      git grep -I -nEf "$PATTERNS" "$rev" -- 2>/dev/null || true
+      git ls-tree -r --name-only "$rev" | grep -Ef "$PATTERNS" | sed "s/^/$rev:(path) /" || true
+    done | cut -d: -f2- | sort -u | head -n 40)
+    msgs=$(git log --all --format='%h %s%n%b' | grep -Ef "$PATTERNS" | head -n 20 || true)
+    if [ -n "$files$msgs" ]; then
+      { [ -z "$files" ] || printf '%s\n' "$files"; [ -z "$msgs" ] || printf 'commit messages:\n%s\n' "$msgs"; } \
+        | refuse "the history"
+    fi
+    echo "check-private: nothing of yours in $(git rev-list --all | wc -l | tr -d ' ') commits" ;;
+  '')
+    found=$(git diff --cached -U0 --no-color | grep -E '^\+' | grep -vE '^\+\+\+ ' | grep -Ef "$PATTERNS" || true)
+    names=$(git diff --cached --name-only | grep -Ef "$PATTERNS" || true)
+    [ -z "$found$names" ] || printf '%s\n%s\n' "$found" "$names" | grep -v '^$' | refuse "the staged change" ;;
+  *) echo "usage: $0 [--message FILE | --history]" >&2; exit 64 ;;
+esac
+exit 0

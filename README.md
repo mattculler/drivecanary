@@ -50,6 +50,12 @@ uv run drivecanary web serve                                                  # 
 uv run drivecanary collect --host atlas                                       # needs the host set up: deploy/README.md
 ```
 
+Names, addresses and serials in examples and tests are placeholders (`atlas`, `hv`, `10.100.100.x`,
+`HOST.domain`); your own belong in the unversioned config that holds them (`/etc/drivecanary/config.toml` on
+the hub, `~/.config/drivecanary/hosts/` on the workstation). `scripts/check-private` refuses a commit that
+contains any of them, going by a list of yours that is never committed either (`scripts/check-private --help`
+says where it lives and how to install it as a git hook).
+
 Everything in the page and the CLI works offline on imported attrlogs; the first real collection adds the
 identity smartctl knows (model family, firmware, WWN, capacity), the pools, and NVMe drives.
 
@@ -70,6 +76,7 @@ identity smartctl knows (model family, firmware, WWN, capacity), the pools, and 
 - `deploy/` — the VM install (`install.sh`, `update.sh`, `backup.sh`, units) and `deploy/host/` — what goes
   on each monitored host (`probe`, `gate`, `agent`, `sudoers`, `install-host.sh`). See `deploy/README.md`.
 - `scripts/make_icons.py` — cuts the page's icons from `docs/logo.jpg` (run by hand when the logo changes).
+- `scripts/check-private` — keeps the names, addresses and serials of your own setup out of commits (below).
 - `tests/fixtures/smartctl/` — real `smartctl -j` captures (from Scrutiny's test data, MIT) covering ATA,
   SATA SSD, NVMe, SAS, a USB bridge, a failing drive and an open failure.
 
