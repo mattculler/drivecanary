@@ -225,6 +225,10 @@ def create_app(config: Config | None = None) -> FastAPI:
             raise HTTPException(400, f"unknown metric {metric!r}") from None
         return JSONResponse({"metric": metric, "window": window, "points": pts})
 
+    @app.get("/drives/retired", response_class=HTMLResponse)
+    def retired_page(request: Request, db: Db) -> HTMLResponse:
+        return page(request, "retired.html", drives=queries.retired_drive_rows(db, cfg, utcnow()))
+
     @app.get("/hosts", response_class=HTMLResponse)
     def hosts_page(request: Request, db: Db) -> HTMLResponse:
         ov = queries.overview(db, cfg)

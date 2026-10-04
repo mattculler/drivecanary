@@ -48,6 +48,7 @@
 <tr><td colspan="15" class="muted">No drives yet. Add a host (<code>drivecanary host add</code>) and collect, or import attrlogs.</td></tr>
 {% endfor %}
 </table></div>
+{% if ov.retired_drives %}<p class="muted"><a href="/drives/retired">{{ ov.retired_drives }} retired drive{{ 's' if ov.retired_drives != 1 }}</a>, kept for their history.</p>{% endif %}
 
 {% if ov.pools %}
 <h2>Pools</h2>

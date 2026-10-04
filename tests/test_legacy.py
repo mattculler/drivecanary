@@ -143,3 +143,24 @@ def test_its_page(cfg: Config, factory: sessionmaker[Session]) -> None:
     assert "TOSHIBA DT01ACA300" in body and "never seen by the collector" in body
     assert "2017-10-26 23:17 EDT" in body and ">legacy<" in body and "Power_On_Hours" in body
     assert "the drive says its long test takes 6.0 hours" in body
+
+
+def test_the_retired_drives_page(cfg: Config, factory: sessionmaker[Session]) -> None:
+    from fastapi.testclient import TestClient
+
+    from drivecanary.web.app import create_app
+
+    client = TestClient(create_app(cfg))
+    assert "retired drive" not in client.get("/").text, "no link while there is nothing to list"
+    assert "No retired drives." in client.get("/drives/retired").text
+    with factory() as s:
+        ids = [import_text(s, text, tz=NY, cfg=cfg.status).drive.id for text in (NAS, DESKTOP)]
+        s.commit()
+    front = client.get("/").text
+    assert '<a href="/drives/retired">2 retired drives</a>' in front and "FAKE00001" not in front
+    page = client.get("/drives/retired").text
+    assert page.index("FAKE00000002") < page.index("FAKE00001"), "the most recently read first: 23:17:56, then :54"
+    assert "2017-10-26 23:17 EDT" in page and "(legacy)" in page and "no host on record" in page
+    assert "29,545" in page and "3.4 years" in page, "the hours, and how long that is"
+    assert 'class="badge v-ok"' in page and "badge v-stale" not in page, "what it last said, not that it went quiet"
+    assert '<a href="/drives/retired">retired drives</a>' in client.get(f"/drive/{ids[0]}").text

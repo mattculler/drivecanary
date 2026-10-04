@@ -2,6 +2,7 @@
 {% block title %}{{ drive.label }} · drivecanary{% endblock %}
 {% block content %}
 <h1><span class="kind">{{ drive.kind }}</span>{{ drive.label }} <span class="muted">{{ drive.serial or drive.serial_key }}</span>{% include "_running.html" %}</h1>
+{% if drive.retired %}<p class="muted">Retired: no host reports this drive any more, so it is off the front page and listed with the other <a href="/drives/retired">retired drives</a>. It comes back the first time a host reports it.</p>{% endif %}
 <section class="summary">
   <span class="badge big v-{{ verdict.value }}">{{ verdict.value }}</span>
   {% if latest %}<span class="why">{{ (latest.reasons or 'nothing to report').replace('\n', '; ') }}</span>

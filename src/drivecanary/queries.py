@@ -96,6 +96,7 @@ class Overview:
     hosts_watched: int = 0  # every host that is neither paused nor retired, however it is monitored
     hosts_ok: int = 0
     last_heard: datetime | None = None  # the newest word from any host
+    retired_drives: int = 0  # kept for their history, off this page
 
     @property
     def testing(self) -> int:
@@ -151,30 +152,37 @@ def running_selftest(session: Session, drive_id: int, cfg: Config, now: datetime
     return int(row[0]) if age is not None and age <= cfg.collect.stale_after_hours else None
 
 
+def _drive_row(session: Session, cfg: Config, now: datetime, drive: Drive) -> DriveRow:
+    s = current_sighting(session, drive.id)
+    latest = latest_run(session, drive.id)
+    age = hours_ago(latest.collected_at, now) if latest else None
+    verdict = Verdict(latest.verdict) if latest else Verdict.UNKNOWN
+    reasons = latest.reasons.splitlines() if latest and latest.reasons else []
+    counters = run_counters(session, latest, cfg.status.ata_warn_attributes) if latest else {}
+    return DriveRow(
+        drive=drive,
+        host=s.host if s else None,
+        dev_name=s.dev_name if s else None,
+        latest=latest,
+        # a retired drive is not expected to be heard from: what it last said stands
+        verdict=verdict if drive.retired else _staled(verdict, age, cfg),
+        reasons=reasons,
+        age_hours=age,
+        counters=counters,
+        testing=None if drive.retired else running_selftest(session, drive.id, cfg, now),
+    )
+
+
 def drive_rows(session: Session, cfg: Config, now: datetime) -> list[DriveRow]:
-    rows: list[DriveRow] = []
-    for drive in session.scalars(select(Drive).where(~Drive.retired)):
-        s = current_sighting(session, drive.id)
-        latest = latest_run(session, drive.id)
-        age = hours_ago(latest.collected_at, now) if latest else None
-        verdict = Verdict(latest.verdict) if latest else Verdict.UNKNOWN
-        reasons = latest.reasons.splitlines() if latest and latest.reasons else []
-        counters = run_counters(session, latest, cfg.status.ata_warn_attributes) if latest else {}
-        testing = running_selftest(session, drive.id, cfg, now)
-        rows.append(
-            DriveRow(
-                drive=drive,
-                host=s.host if s else None,
-                dev_name=s.dev_name if s else None,
-                latest=latest,
-                verdict=_staled(verdict, age, cfg),
-                reasons=reasons,
-                age_hours=age,
-                counters=counters,
-                testing=testing,
-            )
-        )
+    rows = [_drive_row(session, cfg, now, d) for d in session.scalars(select(Drive).where(~Drive.retired))]
     rows.sort(key=lambda r: r.sort_key)
+    return rows
+
+
+def retired_drive_rows(session: Session, cfg: Config, now: datetime) -> list[DriveRow]:
+    """Drives no host reports any more, kept for their history: the most recently heard from first."""
+    rows = [_drive_row(session, cfg, now, d) for d in session.scalars(select(Drive).where(Drive.retired))]
+    rows.sort(key=lambda r: -(r.latest.collected_at.timestamp() if r.latest else 0))
     return rows
 
 
@@ -260,6 +268,7 @@ def overview(session: Session, cfg: Config, now: datetime | None = None) -> Over
         hosts_watched=len(watched),
         hosts_ok=sum(1 for h in watched if h.verdict == Verdict.OK),
         last_heard=max(heard) if heard else None,
+        retired_drives=session.scalar(select(func.count(Drive.id)).where(Drive.retired)) or 0,
     )
 
 
