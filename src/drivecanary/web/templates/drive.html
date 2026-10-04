@@ -27,8 +27,8 @@
   </dd>
   {% endif %}
   <dt>self-tests</dt><dd>
-    {% if latest and latest.selftest_last %}last: {% if report and report.selftest_type %}{{ report.selftest_type }}, {% endif %}{{ latest.selftest_last }}{% if report and report.selftest_age_hours is not none %}, {{ '{:,}'.format(report.selftest_age_hours) }} power-on hours ago{% endif %}{% else %}<span class="muted">none in the log</span>{% endif %}
-    {% if report and report.long_test_minutes %} · a long test takes {{ "%.1f"|format(report.long_test_minutes / 60) }} h, by the drive's own word{% endif %}
+    {% if latest and latest.selftest_last %}last: {% if report and report.selftest_type %}{{ report.selftest_type }}, {% endif %}{{ latest.selftest_last }}{% if report and report.selftest_age_hours is not none %}, {{ '{:,}'.format(report.selftest_age_hours) }} power-on hours{% if report.selftest_age_hours|spelled %} ({{ report.selftest_age_hours|spelled }}){% endif %} ago{% endif %}{% else %}<span class="muted">none in the log</span>{% endif %}
+    {% if report and report.long_test_minutes %} · the drive says its long test takes {{ report.long_test_minutes|taking }}{% endif %}
     {% if selftest and selftest.entry %}
     <div>next short test {{ selftest.entry.next.short.strftime("%a %Y-%m-%d %H:00") if selftest.entry.next.short else "<span class=muted>never</span>"|safe }}, next long test {{ selftest.entry.next.long.strftime("%a %Y-%m-%d %H:00") if selftest.entry.next.long else "<span class=muted>never</span>"|safe }}
       <span class="muted">({{ selftest.host.name }}'s clock, {{ selftest.host.tz or cfg.collect.default_tz }})</span>
@@ -71,15 +71,19 @@
 
 <h2>Recent readings</h2>
 <div class="tbl"><table>
-<tr><th>when</th><th>source</th><th>status</th><th class="num">°C (°F)</th><th class="num">hours</th><th class="wrap">why</th></tr>
+<tr><th>when</th><th>source</th><th>status</th><th class="num">°C (°F)</th><th class="num" title="power-on hours">hours</th><th class="wrap">why</th></tr>
 {% for r in runs %}
 <tr><td title="{{ r.collected_at|dt }}">{{ r.collected_at|dt }}</td><td>{{ r.source }}</td><td>{% with v=r.verdict %}<span class="badge v-{{ v }}">{{ v }}</span>{% endwith %}</td>
-<td class="num">{{ r.temp_c|tempcell }}</td><td class="num">{{ r.power_on_hours if r.power_on_hours is not none else '' }}</td><td class="why">{{ (r.reasons or '').replace('\n', '; ') }}</td></tr>
+<td class="num">{{ r.temp_c|tempcell }}</td><td class="num">{{ r.power_on_hours|hourscell }}</td><td class="why">{{ (r.reasons or '').replace('\n', '; ') }}</td></tr>
 {% endfor %}
 </table></div>
 {% endblock %}
 {% block scripts %}
 <script>
+function hoursSaid(h) {  // as timeutil.spelled has it
+  var d = h / 24, s = h < 48 ? '' : d < 60 ? Math.round(d) + ' days' : d < 730.5 ? Math.round(d / 30.44) + (Math.round(d / 30.44) === 1 ? ' month' : ' months') : (d / 365.25).toFixed(1) + ' years';
+  return h.toLocaleString() + ' h' + (s ? ' (' + s + ')' : '');
+}
 document.querySelectorAll('.chart').forEach(function (el) {
   var q = '/api/drives/' + el.dataset.drive + '/series?metric=' + encodeURIComponent(el.dataset.metric) + '&window=' + el.dataset.window;
   fetch(q).then(function (r) { return r.json(); }).then(function (d) {
@@ -88,8 +92,9 @@ document.querySelectorAll('.chart').forEach(function (el) {
     new uPlot({
       width: el.clientWidth - 12, height: 150, title: el.dataset.label,
       series: [{}, { label: el.dataset.unit || el.dataset.label, stroke: '#2563eb', width: 1.5, spanGaps: true, points: { show: xs.length < 200 },
-        value: function (u, v) { return v == null ? '' : el.dataset.unit === '°C' ? v + ' °C (' + Math.round(v * 9 / 5 + 32) + ' °F)' : v; } }],
+        value: function (u, v) { return v == null ? '' : el.dataset.unit === '°C' ? v + ' °C (' + Math.round(v * 9 / 5 + 32) + ' °F)' : el.dataset.unit === 'h' ? hoursSaid(v) : v; } }],
       axes: [{}, { size: 56 }],
+      legend: { markers: { show: false } },
       scales: { x: { time: true } },
       tzDate: function (ts) { return uPlot.tzDate(new Date(ts * 1e3), el.dataset.tz); },
     }, [xs, ys], el);

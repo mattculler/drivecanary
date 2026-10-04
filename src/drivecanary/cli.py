@@ -21,7 +21,7 @@ from drivecanary.config import CONFIG_ENV, Config, ConfigError, example_config, 
 from drivecanary.logging import configure_logging, get_logger
 from drivecanary.models import Host
 from drivecanary.smart import fahrenheit
-from drivecanary.timeutil import shown
+from drivecanary.timeutil import shown, with_span
 
 ROOT = Path(__file__).resolve().parents[2]
 ALEMBIC_INI = ROOT / "alembic.ini"
@@ -606,7 +606,7 @@ def status_cmd(ctx: typer.Context) -> None:
             d.drive.label,
             d.drive.serial or d.drive.serial_key,
             f"{run.temp_c} ({fahrenheit(run.temp_c)})" if run and run.temp_c is not None else "",
-            f"{run.power_on_hours}" if run and run.power_on_hours is not None else "",
+            with_span(run.power_on_hours, "") if run and run.power_on_hours is not None else "",
             f"{d.age_hours:.1f}h" if d.age_hours is not None else "never",
             "; ".join(d.reasons)[:80],
         )

@@ -11,6 +11,7 @@ from __future__ import annotations
 from drivecanary.config import StatusConfig
 from drivecanary.models import Verdict
 from drivecanary.smart import NVME_CRITICAL, SmartReport, display_raw, fahrenheit
+from drivecanary.timeutil import spelled
 
 ATTR_NAMES = {
     5: "Reallocated_Sector_Ct",
@@ -95,7 +96,8 @@ def judge_report(r: SmartReport, cfg: StatusConfig, *, scheduled: bool = False) 
         v.warn(f"{r.endurance_used}% of rated endurance used")
     if cfg.error_log_recent_hours:
         recent = r.recent_errors(cfg.error_log_recent_hours)
-        within = f"in the last {cfg.error_log_recent_hours} power-on hours"
+        said = spelled(cfg.error_log_recent_hours)
+        within = f"in the last {cfg.error_log_recent_hours} power-on hours" + (f" ({said})" if said else "")
         if recent.get("media"):
             v.warn(f"{recent['media']} read or addressing errors logged {within}")
         if recent.get("interface"):

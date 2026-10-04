@@ -97,8 +97,10 @@ def test_errors_in_the_log_warn_while_they_are_recent() -> None:
     }
     v, why = judge_report(parse_report(doc), CFG)
     assert v == Verdict.WARN
-    assert "1 read or addressing errors logged in the last 720 power-on hours" in why
-    assert "1 interface CRC errors logged in the last 720 power-on hours: cable, backplane or controller" in why
+    assert "1 read or addressing errors logged in the last 720 power-on hours (30 days)" in why
+    assert (
+        "1 interface CRC errors logged in the last 720 power-on hours (30 days): cable, backplane or controller" in why
+    )
     assert len(why) == 2, "the aborted command and the old error say nothing about today"
     quiet = StatusConfig(error_log_recent_hours=0)
     assert judge_report(parse_report(doc), quiet)[0] == Verdict.OK

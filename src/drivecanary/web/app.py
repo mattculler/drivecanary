@@ -25,7 +25,7 @@ from drivecanary.pools import pool_members
 from drivecanary.scrub import running as scrub_running
 from drivecanary.scrub import summarize as summarize_scrub
 from drivecanary.smart import ATTR_LABELS, ERROR_KINDS, UNKNOWN_NAMES, SmartReport, fahrenheit
-from drivecanary.timeutil import hours_ago, shown, utcnow
+from drivecanary.timeutil import hours_ago, minutes_taking, shown, spelled, utcnow, with_span
 
 TEMPLATES = Path(__file__).parent / "templates"
 STATIC = Path(__file__).parent / "static"
@@ -76,9 +76,15 @@ def fmt_temp_cell(c: int | float | None) -> Markup:
 
 
 def fmt_hours(h: int | None) -> str:
+    return with_span(h)
+
+
+def fmt_hours_cell(h: int | None) -> Markup:
+    """A count of hours in a column, the span muted after it."""
     if h is None:
-        return ""
-    return f"{h:,} h ({h / 24 / 365.25:.1f} y)" if h >= 8760 else f"{h:,} h"
+        return Markup("")
+    said = spelled(h)
+    return Markup('{:,} <span class="muted">({})</span>').format(h, said) if said else Markup("{:,}").format(h)
 
 
 COUNTERS = (5, 187, 188, 197, 198, 199, 193)
@@ -155,6 +161,9 @@ def create_app(config: Config | None = None) -> FastAPI:
     templates.env.filters["dt"] = lambda dt: shown(dt, cfg.web.timezone)
     templates.env.filters["hours"] = fmt_hours
     templates.env.filters["temp"] = fmt_temp
+    templates.env.filters["hourscell"] = fmt_hours_cell
+    templates.env.filters["spelled"] = spelled
+    templates.env.filters["taking"] = minutes_taking
     templates.env.filters["tempcell"] = fmt_temp_cell
     templates.env.filters["scrub"] = lambda text, kind: summarize_scrub(kind, text)
     templates.env.globals["version"] = __version__

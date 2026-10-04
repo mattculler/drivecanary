@@ -38,7 +38,7 @@
   <td class="muted">{{ d.drive.serial or d.drive.serial_key }}</td>
   <td class="num">{{ d.drive.capacity_bytes|bytes }}</td>
   <td class="num">{{ r.temp_c|tempcell if r else '' }}</td>
-  <td class="num">{{ '{:,}'.format(r.power_on_hours) if r and r.power_on_hours is not none else '' }}</td>
+  <td class="num">{{ r.power_on_hours|hourscell if r else '' }}</td>
   {% for a in (5, 187, 188, 197, 198) %}<td class="num">{{ d.counters[a] if a in d.counters else '' }}</td>{% endfor %}
   <td>{% if r and r.nvme_percentage_used is not none %}{{ r.nvme_percentage_used }}% / {{ r.nvme_available_spare }}% / {{ r.nvme_media_errors }}{% elif r and r.endurance_used is not none %}{{ r.endurance_used }}%{% endif %}</td>
   <td class="muted" title="{{ r.collected_at|dt if r else '' }}">{{ r.collected_at|ago(now) if r else 'never' }}</td>

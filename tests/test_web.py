@@ -12,8 +12,8 @@ from sqlalchemy.orm import Session, sessionmaker
 from drivecanary.collect import SshResult, collect, write_ssh_material
 from drivecanary.config import Config, WebConfig
 from drivecanary.models import Drive, Host, Pool
-from drivecanary.timeutil import shown
-from drivecanary.web.app import create_app, fmt_ago, fmt_bytes
+from drivecanary.timeutil import minutes_taking, shown, spelled, with_span
+from drivecanary.web.app import create_app, fmt_ago, fmt_bytes, fmt_hours_cell
 from tests.conftest import ProbeEnv
 
 
@@ -244,7 +244,7 @@ def test_a_drives_page_says_when_it_tests_itself(
         ids = {d.serial_key: d.id for d in s.scalars(select(Drive))}
     wd = client.get(f"/drive/{ids['9RK1XXXX']}").text.split("<dt>self-tests</dt>")[1].split("</dd>")[0]
     assert "next short test Sat 2026-10-17 01:00, next long test Tue 2027-01-19 01:00" in wd
-    assert "(atlas's clock, America/New_York)" in wd and "a long test takes 24.6 h" in wd
+    assert "(atlas's clock, America/New_York)" in wd and "the drive says its long test takes 24.6 hours" in wd
     assert "in atlas's smartd.conf: <code>-s (S/../17/./01|L/01/19/./01)</code>" in wd
     assert "last: Short offline, Completed without error" in wd
     nvme = client.get(f"/drive/{ids['BTNH93710FS91P0B']}").text.split("<dt>self-tests</dt>")[1].split("</dd>")[0]
@@ -288,6 +288,25 @@ def test_temperatures_say_fahrenheit_too(cfg: Config, factory: sessionmaker[Sess
 
 def test_formatters() -> None:
     assert fmt_bytes(20000588955136) == "20.0 TB" and fmt_bytes(500107862016) == "500 GB" and fmt_bytes(None) == ""
+    assert spelled(22) == "" and spelled(48) == "2 days" and spelled(594) == "25 days" and spelled(1416) == "59 days"
+    assert (
+        spelled(1440) == "2 months"
+        and spelled(1500) == "2 months"
+        and spelled(9070) == "12 months"
+        and spelled(20000) == "2.3 years"
+    )
+    assert spelled(65592) == "7.5 years" and spelled(None) == ""
+    assert (
+        with_span(9070) == "9,070 h (12 months)"
+        and with_span(22) == "22 h"
+        and with_span(9070, "") == "9,070 (12 months)"
+    )
+    assert with_span(None) == ""
+    assert minutes_taking(13) == "13 minutes" and minutes_taking(1) == "1 minute" and minutes_taking(85) == "85 minutes"
+    assert minutes_taking(1479) == "24.6 hours" and minutes_taking(3000) == "2.1 days" and minutes_taking(None) == ""
+    assert (
+        str(fmt_hours_cell(9070)) == '9,070 <span class="muted">(12 months)</span>' and str(fmt_hours_cell(22)) == "22"
+    )
     from datetime import timedelta
 
     from drivecanary.timeutil import utcnow
