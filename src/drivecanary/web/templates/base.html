@@ -52,7 +52,7 @@
   .uplot .u-inline tr { display: table-row; margin: 0; }
   .uplot .u-inline th, .uplot .u-inline td { display: table-cell; text-align: left; }
   .uplot .u-series > * { padding: 1px 4px; }
-  .retired-note pre { white-space: pre-wrap; word-break: break-all; }
+  details.howto .howto-hide { font-size: 13px; }
   .chip-run { display: inline-block; padding: 0 7px; border-radius: 9px; font-size: 11px; font-weight: 600; color: #1e40af;
     background: #dbeafe; border: 1px solid #93c5fd; margin-left: 4px; white-space: nowrap; }
   .plainlist { margin: 2px 0; padding-left: 18px; }
@@ -72,6 +72,24 @@
 </header>
 <main>{% block content %}{% endblock %}</main>
 <script src="/static/uPlot.iife.min.js"></script>
+<script>
+// Folded instructions open or stay shut as they were last left on a page of the same kind, in this browser.
+document.querySelectorAll('details[data-howto]').forEach(function (d) {
+  var key = 'drivecanary.howto.' + d.dataset.howto;
+  try { if (localStorage.getItem(key) === 'open') d.open = true; } catch (e) {}
+  d.addEventListener('toggle', function () {
+    try { localStorage.setItem(key, d.open ? 'open' : 'closed'); } catch (e) {}
+  });
+  d.querySelectorAll('.howto-hide').forEach(function (a) {
+    a.addEventListener('click', function (ev) {
+      ev.preventDefault();
+      d.open = false;
+      try { localStorage.setItem(key, 'closed'); } catch (e) {}  // now, not when 'toggle' gets round to it
+      d.scrollIntoView({block: 'nearest'});
+    });
+  });
+});
+</script>
 {% block scripts %}{% endblock %}
 </body>
 </html>

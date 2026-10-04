@@ -16,7 +16,7 @@
 </table></div>
 {% endif %}
 
-<details class="howto">
+<details class="howto" data-howto="add-host">
 <summary>Adding a host</summary>
 <p>A host is monitored one of two ways. <b>Pull</b>: the hub reaches it over ssh, hourly; nothing runs on the host in
 between. <b>Push</b>: an agent on the host reports to the hub, hourly and two minutes after the host boots; for a host
@@ -57,5 +57,6 @@ running it again is <code>deploy/host/install-host.sh HOST</code>, and for every
 That is how a probe upgrade or a repair is rolled out. A host that is away for months:
 <code>drivecanary host set HOST --state paused</code>; gone for good: <code>--state retired</code> (history is kept).
 What each failure class on a host's page means is in <code>deploy/README.md</code>.</p>
+<p><a href="#" class="howto-hide">Hide instructions</a></p>
 </details>
 {% endblock %}

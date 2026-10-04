@@ -3,7 +3,8 @@
 {% block content %}
 {# the address only where it says something the name does not #}
 <h1>{{ host.name }}{% if host.address != host.name or host.ssh_port != 22 %} <span class="muted">{{ host.address }}{% if host.ssh_port != 22 %}:{{ host.ssh_port }}{% endif %}</span>{% endif %}</h1>
-{% if host.state == "retired" %}<div class="retired-note"><p>Retired: history is kept indefinitely, but data from this host is not collected. Bring it back with:</p>
+{% if host.state == "retired" %}<p class="muted">Retired: history is kept indefinitely, but data from this host is not collected.</p>
+<details class="howto" data-howto="restore-host"><summary>Instructions to restore the host</summary>
 <pre># on the hub
 drivecanary host set {{ host.name }} --state pending --address {{ host.address }}
 {% if host.transport == "push" %}drivecanary host token {{ host.name }}          # a new token for its agent
@@ -19,7 +20,9 @@ drivecanary host keyscan {{ host.name }} --fingerprint SHA256:...
 drivecanary collect --host {{ host.name }}{% endif %}</pre>
 <p class="muted">Add <code>--target root@ADDRESS</code> to the install if your ssh config does not reach the host as {{ host.name }}, and
 <code>--self-tests</code> for its drives' self-test schedule. If it was installed from this workstation before,
-<code>deploy/host/install-host.sh {{ host.name }}</code> alone repeats that install.</p></div>
+<code>deploy/host/install-host.sh {{ host.name }}</code> alone repeats that install.</p>
+<p><a href="#" class="howto-hide">Hide instructions</a></p>
+</details>
 {% endif %}
 <dl class="kv">
   <dt>state</dt><dd>{{ host.state }}{% if host.unreachable_since %} (unreachable since {{ host.unreachable_since|dt }}){% endif %}</dd>

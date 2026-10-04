@@ -364,9 +364,10 @@ def test_retiring_a_host_retires_what_was_on_it(
     assert "atlas" not in front.split("<h2>Hosts</h2>")[0], "its drives and pools are off the front page"
     assert "3 retired drives" in front
     page = client.get("/host/atlas").text
-    assert (
-        "Retired: history is kept indefinitely, but data from this host is not collected. Bring it back with:" in page
-    )
+    assert "Retired: history is kept indefinitely, but data from this host is not collected.</p>" in page
+    howto = page.split('<details class="howto" data-howto="restore-host">')[1].split("</details>")[0]
+    assert "<summary>Instructions to restore the host</summary>" in howto and 'class="howto-hide"' in howto
+    assert 'data-howto="restore-host" open' not in page, "folded until opened"
     assert "drivecanary host set atlas --state pending --address atlas.domain" in page
     assert "deploy/host/install-host.sh atlas --hub-ip 10.100.100.84" in page and "AAAAtestkey" in page
     assert "drivecanary host keyscan atlas --fingerprint SHA256:" in page
