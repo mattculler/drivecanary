@@ -46,6 +46,11 @@
   details.howto summary { cursor: pointer; font-weight: 600; }
   details.howto h3 { font-size: 14px; margin: 14px 0 4px; }
   details.howto pre { background: #f3f4f6; white-space: pre-wrap; word-break: break-all; }
+  /* uPlot centres its legend and lays the series out in a line, so it shifts with the width of the value under
+     the cursor; here it is two rows at the left, where it stays */
+  .uplot .u-legend { text-align: left; margin: 0 0 0 6px; }
+  .uplot .u-inline tr { display: block; margin: 0; }
+  .uplot .u-series > * { padding: 1px 4px; }
   .chip-run { display: inline-block; padding: 0 7px; border-radius: 9px; font-size: 11px; font-weight: 600; color: #1e40af;
     background: #dbeafe; border: 1px solid #93c5fd; margin-left: 4px; white-space: nowrap; }
   .plainlist { margin: 2px 0; padding-left: 18px; }
