@@ -574,6 +574,39 @@ def import_attrlog(
             )
 
 
+@import_app.command("smartctl-text")
+def import_smartctl_text(
+    ctx: typer.Context,
+    files: Annotated[list[Path], typer.Argument(help="`smartctl -a` output saved as text, one drive a file.")],
+    tz: Annotated[
+        str | None,
+        typer.Option("--tz", help="Zone the capture's 'Local Time is' line is in (default: [collect].default_tz)."),
+    ] = None,
+) -> None:
+    """Import readings saved as `smartctl -a` text, from before smartctl had --json. A drive never seen
+    otherwise is filed retired, off the front page, until a host reports it again. Idempotent."""
+    from drivecanary.legacy import import_text
+    from drivecanary.timeutil import zone
+
+    state = _state(ctx)
+    cfg = state.config
+    z = zone(tz or cfg.collect.default_tz)
+    with _factory(state)() as s:
+        for f in files:
+            try:
+                r = import_text(s, f.read_text(encoding="utf-8", errors="replace"), tz=z, cfg=cfg.status)
+            except ValueError as e:
+                err.print(f"[red]{f}: {e}[/red]")
+                raise typer.Exit(2) from None
+            s.commit()
+            what = "stored" if r.stored else "already stored"
+            where = "a new drive, filed retired" if r.new_drive else "a drive already known"
+            typer.echo(
+                f"{f.name}: {r.drive.model or r.drive.model_key} {r.drive.serial or r.drive.serial_key}, "
+                f"the reading of {shown(r.collected_at, cfg.web.timezone)} {what}; {where}: /drive/{r.drive.id}"
+            )
+
+
 @app.command("status")
 def status_cmd(ctx: typer.Context) -> None:
     """The page, in the terminal: every drive worst first, then the hosts and pools."""

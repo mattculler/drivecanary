@@ -196,6 +196,13 @@ Copies of `/var/lib/smartmontools/attrlog.*.csv` from a host import with
 idempotent, and the collector's own pulls of the same files do not duplicate a line. NVMe attrlogs exist only
 from smartmontools 7.5; ATA and SCSI logs are read, NVMe ones are not yet.
 
+Readings saved as `smartctl -a` text, from before smartctl had `--json` (smartmontools 6 and older), import
+with `drivecanary import smartctl-text FILE...` (`--tz` if the capture's "Local Time is" zone is not
+`[collect].default_tz`). Each is read into the shape smartctl 7's JSON has and judged like a reading taken
+today, under the drive's model and serial, so a drive that turns up on a host later finds its old reading
+in its history. A drive drivecanary has not otherwise seen is filed retired: off the front page, at its own
+`/drive/N`, until a host reports it.
+
 ## Push hosts
 
 Some hosts should report to the hub instead of being reached by it: one that is only up on demand (a NAS woken
