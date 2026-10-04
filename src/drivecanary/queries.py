@@ -12,9 +12,10 @@ from datetime import datetime, timedelta
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from drivecanary import selftests
+from drivecanary import attrlog, selftests
 from drivecanary.config import Config
 from drivecanary.models import (
+    AttrlogCursor,
     AttrSample,
     CollectionRun,
     Drive,
@@ -401,6 +402,7 @@ def since_for(window: str, now: datetime) -> datetime | None:
 
 @dataclass
 class SelftestRow:
+    host: Host
     drive: Drive
     dev_name: str
     entry: selftests.Entry | None  # what governs this drive; None: nothing schedules a test for it
@@ -409,35 +411,76 @@ class SelftestRow:
     long_takes_minutes: int | None  # by the drive's own word
     testing: int | None
 
+    @property
+    def runs_it(self) -> str | None:
+        """What is wrong with what should start the tests, if anything: a schedule needs smartd, or cron."""
+        state = self.host.smartd_state
+        if self.entry is None or not state or state in ("active", "cron"):
+            return None
+        return f"there is a schedule, and nothing running to start the tests: smartd is {state}"
 
-def host_selftests(session: Session, cfg: Config, host: Host, now: datetime) -> list[SelftestRow]:
-    """Every drive now on a host, with when it next tests itself. The times are the host's own clock's,
-    which is what smartd goes by."""
+
+def _host_entries(host: Host, cfg: Config, now: datetime) -> list[selftests.Entry]:
+    """smartd matches its schedule against the host's own clock."""
     from drivecanary.timeutil import zone
 
     local = now.astimezone(zone(host.tz or cfg.collect.default_tz)).replace(tzinfo=None)
-    entries = selftests.schedule(host.smartd_conf, local)
-    rows: list[SelftestRow] = []
+    return selftests.schedule(host.smartd_conf, local)
+
+
+def _selftest_row(
+    session: Session, cfg: Config, host: Host, s: DriveSighting, entries: list[selftests.Entry], now: datetime
+) -> SelftestRow:
+    report = latest_report(session, s.drive_id)
+    entry = selftests.entry_for(entries, s.dev_name, s.drive.serial_key)
+    last = None
+    if report is not None and report.selftest_last:
+        last = f"{report.selftest_type}: {report.selftest_last}" if report.selftest_type else report.selftest_last
+    return SelftestRow(
+        host=host,
+        drive=s.drive,
+        dev_name=s.dev_name,
+        entry=entry if entry is not None and entry.regex else None,
+        last=last,
+        last_age_hours=report.selftest_age_hours if report is not None else None,
+        long_takes_minutes=report.long_test_minutes if report is not None else None,
+        testing=running_selftest(session, s.drive_id, cfg, now),
+    )
+
+
+def host_selftests(session: Session, cfg: Config, host: Host, now: datetime) -> list[SelftestRow]:
+    """Every drive now on a host, with when it next tests itself."""
+    entries = _host_entries(host, cfg, now)
     sightings = session.scalars(
         select(DriveSighting)
         .where(DriveSighting.host_id == host.id, DriveSighting.current)
         .order_by(DriveSighting.dev_name)
     )
-    for s in sightings:
-        report = latest_report(session, s.drive_id)
-        entry = selftests.entry_for(entries, s.dev_name, s.drive.serial_key)
-        last = None
-        if report is not None and report.selftest_last:
-            last = f"{report.selftest_type}: {report.selftest_last}" if report.selftest_type else report.selftest_last
-        rows.append(
-            SelftestRow(
-                drive=s.drive,
-                dev_name=s.dev_name,
-                entry=entry if entry is not None and entry.regex else None,
-                last=last,
-                last_age_hours=report.selftest_age_hours if report is not None else None,
-                long_takes_minutes=report.long_test_minutes if report is not None else None,
-                testing=running_selftest(session, s.drive_id, cfg, now),
-            )
-        )
-    return rows
+    return [_selftest_row(session, cfg, host, s, entries, now) for s in sightings]
+
+
+def drive_selftest(session: Session, cfg: Config, drive: Drive, now: datetime) -> SelftestRow | None:
+    """When a drive next tests itself, by the host it is in now. None for a drive no host has at present,
+    or whose host has not said what its schedule is (a probe before version 3)."""
+    s = session.scalar(
+        select(DriveSighting)
+        .where(DriveSighting.drive_id == drive.id, DriveSighting.current)
+        .order_by(DriveSighting.last_seen_at.desc())
+        .limit(1)
+    )
+    if s is None or s.host.smartd_conf is None:
+        return None
+    return _selftest_row(session, cfg, s.host, s, _host_entries(s.host, cfg, now), now)
+
+
+def drive_attrlogs(session: Session, drive: Drive) -> list[AttrlogCursor]:
+    """The smartd attribute logs read for a drive, on whichever hosts: the file is named after the drive."""
+    found = []
+    for c in session.scalars(select(AttrlogCursor).order_by(AttrlogCursor.updated_at.desc())):
+        try:
+            name = attrlog.parse_name(c.file_name)
+        except ValueError:
+            continue
+        if (name.model_key, name.serial_key) == (drive.model_key, drive.serial_key):
+            found.append(c)
+    return found

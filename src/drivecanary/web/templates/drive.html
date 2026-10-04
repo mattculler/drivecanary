@@ -21,11 +21,24 @@
     {% if latest.exit_status is not none %} · smartctl exit {{ latest.exit_status }}{% endif %}
     {% if latest.endurance_used is not none %} · {{ latest.endurance_used }}% of rated endurance used{% endif %}
     {% if latest.ata_error_count is not none %} · {{ latest.ata_error_count }} error log entries{% endif %}
-    {% if latest.selftest_last %} · last self-test: {% if report and report.selftest_type %}{{ report.selftest_type }}, {% endif %}{{ latest.selftest_last }}{% if report and report.selftest_age_hours is not none %}, {{ '{:,}'.format(report.selftest_age_hours) }} power-on hours ago{% endif %}{% endif %}
     {% if latest.nvme_percentage_used is not none %} · {{ latest.nvme_percentage_used }}% used, spare {{ latest.nvme_available_spare }}% (threshold {{ latest.nvme_spare_threshold }}%), {{ latest.nvme_media_errors }} media errors, {{ latest.nvme_unsafe_shutdowns }} unsafe shutdowns{% endif %}
     {% if latest.scsi_grown_defects is not none %} · {{ latest.scsi_grown_defects }} grown defects{% endif %}
     {% if latest.messages %}<div class="why">smartctl: {{ latest.messages }}</div>{% endif %}
   </dd>
+  {% endif %}
+  <dt>self-tests</dt><dd>
+    {% if latest and latest.selftest_last %}last: {% if report and report.selftest_type %}{{ report.selftest_type }}, {% endif %}{{ latest.selftest_last }}{% if report and report.selftest_age_hours is not none %}, {{ '{:,}'.format(report.selftest_age_hours) }} power-on hours ago{% endif %}{% else %}<span class="muted">none in the log</span>{% endif %}
+    {% if report and report.long_test_minutes %} · a long test takes {{ "%.1f"|format(report.long_test_minutes / 60) }} h, by the drive's own word{% endif %}
+    {% if selftest and selftest.entry %}
+    <div>next short test {{ selftest.entry.next.short.strftime("%a %Y-%m-%d %H:00") if selftest.entry.next.short else "<span class=muted>never</span>"|safe }}, next long test {{ selftest.entry.next.long.strftime("%a %Y-%m-%d %H:00") if selftest.entry.next.long else "<span class=muted>never</span>"|safe }}
+      <span class="muted">({{ selftest.host.name }}'s clock, {{ selftest.host.tz or cfg.collect.default_tz }})</span>
+      {% if selftest.runs_it %}<span class="problem">{{ selftest.runs_it }}</span>{% endif %}</div>
+    <div class="muted" title="smartd's own form: T/MM/DD/d/HH is the kind of test, the month, the day of the month, the day of the week and the hour; a dot stands for any">in {{ selftest.host.name }}'s smartd.conf: <code>-s {{ selftest.entry.regex }}</code>{% if selftest.entry.device == "DEVICESCAN" %} (from its DEVICESCAN line){% endif %}{% if selftest.entry.problem %} <span class="problem">{{ selftest.entry.problem }}</span>{% endif %}</div>
+    {% elif selftest %}<div class="muted">nothing on {{ selftest.host.name }} schedules one: <code>install-host.sh {{ selftest.host.name }} ... --self-tests</code> would, each drive on a date of its own</div>
+    {% endif %}
+  </dd>
+  {% if attrlogs %}
+  <dt>smartd log</dt><dd>{% for c in attrlogs %}<code>{{ c.file_name }}</code> on <a class="plain" href="/host/{{ c.host.name|urlencode }}">{{ c.host.name }}</a>: {{ '{:,}'.format(c.lines) }} lines read ({{ '{:,}'.format(c.offset) }} bytes), the last from {{ c.last_ts|dt }}{% if not loop.last %}<br>{% endif %}{% endfor %}</dd>
   {% endif %}
   {% if logged %}
   <dt>error log</dt><dd>{{ latest.ata_error_count }} in all; of the {{ logged.values()|sum }} the drive still holds:

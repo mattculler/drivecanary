@@ -340,3 +340,5 @@ class AttrlogCursor(Base):
     lines: Mapped[int] = mapped_column(default=0)
     last_ts: Mapped[datetime | None] = mapped_column(Epoch)
     updated_at: Mapped[datetime] = mapped_column(Epoch, default=utcnow)
+
+    host: Mapped[Host] = relationship()

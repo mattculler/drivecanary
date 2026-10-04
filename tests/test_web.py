@@ -48,7 +48,7 @@ def test_pages(cfg: Config, factory: sessionmaker[Session], probe_env: ProbeEnv)
     r = TestClient(create_app(cfg), base_url="http://127.0.0.1:8080").get("/hosts")
     assert "--hub-ip THIS-VM-IP" in r.text, "loopback is never the address a host should accept the key from"
     r = client.get("/host/atlas")
-    assert r.status_code == 200 and "attrlog.ST20000NM007D_3DJ103-ZXA00001.ata.csv" in r.text
+    assert r.status_code == 200 and "<h2>Syncs</h2>" in r.text
     assert client.get("/host/1").text == r.text, "a link by number from before still works"
     assert client.get("/host/nobody").status_code == 404 and client.get("/host/999").status_code == 404
     assert 'href="/host/atlas"' in body and 'href="/host/1"' not in body
@@ -123,7 +123,7 @@ def test_drive_page_and_series(cfg: Config, factory: sessionmaker[Session], prob
     page = client.get(f"/drive/{failing.id}").text
     assert "<dt>error log</dt><dd>56 in all; of the 5 the drive still holds:" in page
     assert "<b>5</b> the drive could not read or find a sector" in page
-    assert "last self-test: Short offline, Completed without error, " in page and "power-on hours ago" in page
+    assert "last: Short offline, Completed without error, " in page and "power-on hours ago" in page
     assert "Reallocated_Sector_Ct" in page and "unknown to smartctl" not in page
     r = client.get(f"/drive/{ids[1]}")
     assert r.status_code == 200 and 'data-metric="nvme_percentage_used"' in r.text
@@ -229,36 +229,48 @@ def test_what_is_running_is_said_wherever_the_thing_is_named(
     )
     assert "scrub 18.42%" in client.get(f"/pool/{btr.id}").text.split("</h1>")[0]
     host = client.get("/host/atlas").text
-    assert "self-test 90%" in host and "scrub 18.42%" in host
+    assert host.count("self-test 90%") == 1 and "scrub 18.42%" in host
 
 
-def test_a_hosts_page_says_when_its_drives_test_themselves(
+def test_a_drives_page_says_when_it_tests_itself(
     cfg: Config, factory: sessionmaker[Session], probe_env: ProbeEnv
 ) -> None:
     _populated(cfg, factory, probe_env)
     client = TestClient(create_app(cfg))
-    page = client.get("/host/atlas").text
-    section = page.split("<h2>Self-tests")[1].split("<h2>Attempts")[0]
-    assert "smartd is active" in section
-    assert (
-        "<code>(S/../17/./01|L/01/19/./01)</code>" in section and "<code>(S/../17/./02|L/07/19/./01)</code>" in section
+    host = client.get("/host/atlas").text
+    assert "2 of 3 drives have a schedule (each drive's page says when); smartd is active" in host
+    assert "<h2>Syncs</h2>" in host and "Attempts" not in host and "attribute logs" not in host
+    with factory() as s:
+        ids = {d.serial_key: d.id for d in s.scalars(select(Drive))}
+    wd = client.get(f"/drive/{ids['9RK1XXXX']}").text.split("<dt>self-tests</dt>")[1].split("</dd>")[0]
+    assert "next short test Sat 2026-10-17 01:00, next long test Tue 2027-01-19 01:00" in wd
+    assert "(atlas's clock, America/New_York)" in wd and "a long test takes 24.6 h" in wd
+    assert "in atlas's smartd.conf: <code>-s (S/../17/./01|L/01/19/./01)</code>" in wd
+    assert "last: Short offline, Completed without error" in wd
+    nvme = client.get(f"/drive/{ids['BTNH93710FS91P0B']}").text.split("<dt>self-tests</dt>")[1].split("</dd>")[0]
+    assert "nothing on atlas schedules one" in nvme and "--self-tests" in nvme and "next short" not in nvme
+    seagate = client.get(f"/drive/{ids['ZXA00001']}").text
+    assert "<dt>self-tests</dt>" in seagate and "next short" not in seagate, (
+        "no host has it: nothing to say of a schedule"
     )
-    assert "-17 01:00" in section and "-01-19 01:00" in section and "-07-19 01:00" in section
-    assert section.count("none scheduled") == 1, "the NVMe drive is left to DEVICESCAN, which schedules nothing"
-    assert "24.6 h" in section, "what the 14 TB drive says its long test takes"
-    assert "Short offline: Completed without error" in section
+    assert (
+        "<code>attrlog.ST20000NM007D_3DJ103-ZXA00001.ata.csv</code> on <a" in seagate
+        and "20 lines read (6,300 bytes)" in seagate
+    )
     with factory() as s:
-        host = s.scalar(select(Host))
-        assert host is not None
-        host.smartd_state = "inactive"
+        atlas = s.scalar(select(Host))
+        assert atlas is not None
+        atlas.smartd_state = "inactive"
         s.commit()
-    assert "nothing running to start the tests: smartd is inactive" in client.get("/host/atlas").text
+    assert "and will start none of them" in client.get("/host/atlas").text
+    assert "nothing running to start the tests: smartd is inactive" in client.get(f"/drive/{ids['9RK1XXXX']}").text
     with factory() as s:
-        host = s.scalar(select(Host))
-        assert host is not None
-        host.smartd_conf = None
+        atlas = s.scalar(select(Host))
+        assert atlas is not None
+        atlas.smartd_conf = None
         s.commit()
-    assert "has not said what its schedule is" in client.get("/host/atlas").text
+    assert "not reported yet: that comes with version 3" in client.get("/host/atlas").text
+    assert "next short" not in client.get(f"/drive/{ids['9RK1XXXX']}").text
 
 
 def test_temperatures_say_fahrenheit_too(cfg: Config, factory: sessionmaker[Session], probe_env: ProbeEnv) -> None:

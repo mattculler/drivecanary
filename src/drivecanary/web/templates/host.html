@@ -14,6 +14,9 @@
   <dt>last success</dt><dd>{{ host.last_success_at|ago(now) }} <span class="muted">{{ host.last_success_at|dt }}</span></dd>
   {% if host.last_attempt_class %}<dt>last failure</dt><dd class="problem">{{ host.last_attempt_class }}: {{ host.last_attempt_reason }}</dd>
   {% elif host.last_attempt_reason %}<dt>warnings</dt><dd>{{ host.last_attempt_reason.replace('\n', '; ') }}</dd>{% endif %}
+  <dt>self-tests</dt><dd>{% if host.smartd_conf is none %}<span class="muted">not reported yet: that comes with version 3 of the probe (run install-host.sh for this host again)</span>
+    {% else %}{% set scheduled = selftests|selectattr("entry")|list %}{% if scheduled %}{{ scheduled|length }} of {{ selftests|length }} drives have a schedule (each drive's page says when){% if host.smartd_state == "cron" %}, started by cron{% elif host.smartd_state %}; smartd is {{ host.smartd_state }}{% endif %}{% if host.smartd_state and host.smartd_state not in ("active", "cron") %} <span class="problem">and will start none of them</span>{% endif %}
+    {% else %}<span class="muted">none scheduled. <code>install-host.sh {{ host.name }} ... --self-tests</code> gives every drive a short test each month and a long one each year, each on a date of its own.</span>{% endif %}{% endif %}</dd>
   {% if host.note %}<dt>note</dt><dd>{{ host.note }}</dd>{% endif %}
 </dl>
 
@@ -45,32 +48,7 @@
 </table></div>
 {% endif %}
 
-<h2>Self-tests <span class="muted">{% if host.smartd_state == "cron" %}started by cron{% elif host.smartd_state %}smartd is {{ host.smartd_state }}{% endif %}</span></h2>
-{% if host.smartd_conf is none %}
-<p class="muted">This host has not said what its schedule is: that comes with version 3 of the probe (run install-host.sh for it again).</p>
-{% else %}
-{% if not selftests|selectattr("entry")|list %}<p class="muted">Nothing schedules a self-test on this host. <code>install-host.sh {{ host.name }} ... --self-tests</code> gives every drive a short test each month and a long one each year, each on a date of its own.</p>{% endif %}
-{% if host.smartd_state and host.smartd_state not in ("active", "cron") and selftests|selectattr("entry")|list %}<p class="problem">There is a schedule, and nothing running to start the tests: smartd is {{ host.smartd_state }}.</p>{% endif %}
-<div class="tbl"><table>
-<tr><th>dev</th><th>drive</th><th>next short test</th><th>next long test</th><th title="by the drive's own word">a long test takes</th><th>last test</th><th>as smartd has it</th></tr>
-{% for t in selftests %}
-<tr>
-  <td>{{ t.dev_name }}</td>
-  <td><a href="/drive/{{ t.drive.id }}">{{ t.drive.label }}</a>{% with testing=t.testing %}{% include "_running.html" %}{% endwith %}</td>
-  {% if t.entry %}
-  <td>{{ t.entry.next.short.strftime("%a %Y-%m-%d %H:00") if t.entry.next.short else "" }}</td>
-  <td>{{ t.entry.next.long.strftime("%a %Y-%m-%d %H:00") if t.entry.next.long else "" }}</td>
-  {% else %}<td colspan="2" class="muted">none scheduled</td>{% endif %}
-  <td class="muted">{% if t.long_takes_minutes %}{{ "%.1f"|format(t.long_takes_minutes / 60) }} h{% endif %}</td>
-  <td class="why">{% if t.last %}{{ t.last }}{% if t.last_age_hours is not none %}, {{ (t.last_age_hours / 24)|round|int }} d of power-on time ago{% endif %}{% else %}<span class="muted">never</span>{% endif %}</td>
-  <td class="muted">{% if t.entry %}<code>{{ t.entry.regex }}</code>{% if t.entry.problem %} <span class="problem">{{ t.entry.problem }}</span>{% endif %}{% if t.entry.device == "DEVICESCAN" %} (DEVICESCAN){% endif %}{% endif %}</td>
-</tr>
-{% else %}<tr><td colspan="7" class="muted">no drives seen on this host yet</td></tr>{% endfor %}
-</table></div>
-<p class="muted">Times are this host's own clock ({{ host.tz or cfg.collect.default_tz }}). Tests are kept apart by their dates, not by anything that watches: a scrub started by hand can meet one.</p>
-{% endif %}
-
-<h2>Attempts</h2>
+<h2>Syncs</h2>
 <div class="tbl"><table>
 <tr><th>started</th><th>how</th><th>result</th><th class="num">drives</th><th class="num">bytes</th><th class="num">ssh rc</th><th>host clock</th><th class="wrap">reason</th></tr>
 {% for a in attempts %}
@@ -85,11 +63,4 @@
 {% else %}<tr><td colspan="8" class="muted">{{ "has not reported yet" if host.transport == "push" else "never tried" }}</td></tr>{% endfor %}
 </table></div>
 
-{% if cursors %}
-<h2>smartd attribute logs</h2>
-<div class="tbl"><table>
-<tr><th>file</th><th class="num">bytes read</th><th class="num">lines</th><th>last line</th></tr>
-{% for c in cursors %}<tr><td>{{ c.file_name }}</td><td class="num">{{ '{:,}'.format(c.offset) }}</td><td class="num">{{ '{:,}'.format(c.lines) }}</td><td class="muted">{{ c.last_ts|dt }}</td></tr>{% endfor %}
-</table></div>
-{% endif %}
 {% endblock %}
