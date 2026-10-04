@@ -1,6 +1,6 @@
 <div class="tbl"><table>
 <tr><th>status</th><th>host</th><th>how</th><th>state</th><th class="num">drives</th><th>last success</th><th>last attempt</th><th class="wrap">what happened</th></tr>
-{% for h in ov.hosts %}{% set a = h.last_attempt %}
+{% for h in ov.hosts if h.host.state != "retired" %}{% set a = h.last_attempt %}
 <tr class="r-{{ 'fail' if h.verdict.value == 'error' else h.verdict.value }}">
   <td>{% with v=h.verdict %}{% include "_badge.html" %}{% endwith %}</td>
   <td><a href="/host/{{ h.host.name|urlencode }}">{{ h.host.name }}</a>{% if h.host.address != h.host.name %} <span class="muted">{{ h.host.address }}</span>{% endif %}</td>

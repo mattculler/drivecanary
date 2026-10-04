@@ -197,8 +197,11 @@ idempotent, and the collector's own pulls of the same files do not duplicate a l
 from smartmontools 7.5; ATA and SCSI logs are read, NVMe ones are not yet.
 
 Readings saved as `smartctl -a` text, from before smartctl had `--json` (smartmontools 6 and older), import
-with `drivecanary import smartctl-text FILE...` (`--tz` if the capture's "Local Time is" zone is not
-`[collect].default_tz`). Each is read into the shape smartctl 7's JSON has and judged like a reading taken
+with `drivecanary import smartctl-text FILE... --host NAME` (`--tz` if the capture's "Local Time is" zone is
+not `[collect].default_tz`). `--host` says which host the captures were taken on: a host drivecanary does not
+have is added retired, kept so that its drives can say where they were (`/hosts` lists retired hosts apart;
+`drivecanary host set NAME --state pending` and its install bring one back). Run again with `--host`, it
+files readings already imported under that host. Each is read into the shape smartctl 7's JSON has and judged like a reading taken
 today, under the drive's model and serial, so a drive that turns up on a host later finds its old reading
 in its history. A drive drivecanary has not otherwise seen is filed retired: off the front page, at its own
 `/drive/N`, until a host reports it.

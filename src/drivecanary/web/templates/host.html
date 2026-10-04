@@ -2,6 +2,7 @@
 {% block title %}{{ host.name }} · drivecanary{% endblock %}
 {% block content %}
 {# the address only where it says something the name does not #}
+{% if host.state == "retired" %}<p class="muted">Retired: this host is not collected from, and its history is kept. <code>drivecanary host set {{ host.name }} --state pending</code> and its install bring it back.</p>{% endif %}
 <h1>{{ host.name }}{% if host.address != host.name or host.ssh_port != 22 %} <span class="muted">{{ host.address }}{% if host.ssh_port != 22 %}:{{ host.ssh_port }}{% endif %}</span>{% endif %}</h1>
 <dl class="kv">
   <dt>state</dt><dd>{{ host.state }}{% if host.unreachable_since %} (unreachable since {{ host.unreachable_since|dt }}){% endif %}</dd>
@@ -14,9 +15,11 @@
   <dt>last success</dt><dd>{{ host.last_success_at|ago(now) }} <span class="muted">{{ host.last_success_at|dt }}</span></dd>
   {% if host.last_attempt_class %}<dt>last failure</dt><dd class="problem">{{ host.last_attempt_class }}: {{ host.last_attempt_reason }}</dd>
   {% elif host.last_attempt_reason %}<dt>warnings</dt><dd>{{ host.last_attempt_reason.replace('\n', '; ') }}</dd>{% endif %}
+  {% if host.state != "retired" %}
   <dt>self-tests</dt><dd>{% if host.smartd_conf is none %}<span class="muted">not reported yet: that comes with version 3 of the probe (run install-host.sh for this host again)</span>
     {% else %}{% set scheduled = selftests|selectattr("entry")|list %}{% if scheduled %}{{ scheduled|length }} of {{ selftests|length }} drives have a schedule (each drive's page says when){% if host.smartd_state == "cron" %}, started by cron{% elif host.smartd_state %}; smartd is {{ host.smartd_state }}{% endif %}{% if host.smartd_state and host.smartd_state not in ("active", "cron") %} <span class="problem">and will start none of them</span>{% endif %}
     {% else %}<span class="muted">none scheduled. <code>install-host.sh {{ host.name }} ... --self-tests</code> gives every drive a short test each month and a long one each year, each on a date of its own.</span>{% endif %}{% endif %}</dd>
+  {% endif %}
   {% if host.note %}<dt>note</dt><dd>{{ host.note }}</dd>{% endif %}
 </dl>
 
@@ -37,6 +40,21 @@
 </tr>
 {% else %}<tr><td colspan="9" class="muted">no drives seen on this host yet</td></tr>{% endfor %}
 </table></div>
+
+{% if retired %}
+<h2>Retired drives last seen here</h2>
+<div class="tbl"><table>
+<tr><th>last said</th><th>drive</th><th>serial</th><th class="num">size</th><th class="num">hours</th><th>last reading</th></tr>
+{% for d in retired %}{% set r = d.latest %}
+<tr><td>{% with v=d.verdict %}{% include "_badge.html" %}{% endwith %}</td>
+  <td><span class="kind">{{ d.drive.kind }}</span><a href="/drive/{{ d.drive.id }}">{{ d.drive.label }}</a></td>
+  <td class="muted">{{ d.drive.serial or d.drive.serial_key }}</td>
+  <td class="num">{{ d.drive.capacity_bytes|bytes }}</td>
+  <td class="num">{{ r.power_on_hours|hourscell if r else '' }}</td>
+  <td>{% if r %}{{ r.collected_at|dt }} <span class="muted">({{ r.source }})</span>{% endif %}</td></tr>
+{% endfor %}
+</table></div>
+{% endif %}
 
 {% if pools %}
 <h2>Pools</h2>

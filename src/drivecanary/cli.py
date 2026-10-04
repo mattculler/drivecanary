@@ -578,6 +578,10 @@ def import_attrlog(
 def import_smartctl_text(
     ctx: typer.Context,
     files: Annotated[list[Path], typer.Argument(help="`smartctl -a` output saved as text, one drive a file.")],
+    host: Annotated[
+        str | None,
+        typer.Option("--host", help="The host the captures were taken on; made, retired, if there is none."),
+    ] = None,
     tz: Annotated[
         str | None,
         typer.Option("--tz", help="Zone the capture's 'Local Time is' line is in (default: [collect].default_tz)."),
@@ -585,16 +589,21 @@ def import_smartctl_text(
 ) -> None:
     """Import readings saved as `smartctl -a` text, from before smartctl had --json. A drive never seen
     otherwise is filed retired, off the front page, until a host reports it again. Idempotent."""
-    from drivecanary.legacy import import_text
+    from drivecanary.legacy import import_text, retired_host
     from drivecanary.timeutil import zone
 
     state = _state(ctx)
     cfg = state.config
     z = zone(tz or cfg.collect.default_tz)
     with _factory(state)() as s:
+        host_row = None
+        if host is not None:
+            host_row, made = retired_host(s, host)
+            if made:
+                typer.echo(f"host {host}: added, retired (drivecanary host set {host} --state pending brings it back)")
         for f in files:
             try:
-                r = import_text(s, f.read_text(encoding="utf-8", errors="replace"), tz=z, cfg=cfg.status)
+                r = import_text(s, f.read_text(encoding="utf-8", errors="replace"), tz=z, cfg=cfg.status, host=host_row)
             except ValueError as e:
                 err.print(f"[red]{f}: {e}[/red]")
                 raise typer.Exit(2) from None

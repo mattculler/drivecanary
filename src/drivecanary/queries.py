@@ -250,7 +250,8 @@ def overview(session: Session, cfg: Config, now: datetime | None = None) -> Over
     hosts = host_rows(session, cfg, now, drives)
     pools = pool_rows(session, cfg, now)
     last = session.scalar(select(CollectionRun).order_by(CollectionRun.started_at.desc()).limit(1))
-    verdicts = [d.verdict for d in drives] + [p.verdict for p in pools] + [h.verdict for h in hosts]
+    current_hosts = [h for h in hosts if h.host.state != HostState.RETIRED.value]  # retired: history, not status
+    verdicts = [d.verdict for d in drives] + [p.verdict for p in pools] + [h.verdict for h in current_hosts]
     overall = min(verdicts, key=rank) if verdicts else Verdict.UNKNOWN
     counts: dict[str, int] = {}
     for v in verdicts:

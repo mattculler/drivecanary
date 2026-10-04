@@ -164,3 +164,54 @@ def test_the_retired_drives_page(cfg: Config, factory: sessionmaker[Session]) ->
     assert "29,545" in page and "3.4 years" in page, "the hours, and how long that is"
     assert 'class="badge v-ok"' in page and "badge v-stale" not in page, "what it last said, not that it went quiet"
     assert '(<a href="/drives/retired">all retired drives</a>)' in client.get(f"/drive/{ids[0]}").text
+
+
+def test_the_host_a_capture_came_from(tmp_path: Path, cfg: Config) -> None:
+    from fastapi.testclient import TestClient
+
+    from drivecanary.config import load_config
+    from drivecanary.db import make_engine, sessionmaker_for
+    from drivecanary.models import DriveSighting, Host
+    from drivecanary.web.app import create_app
+
+    c = tmp_path / "config.toml"
+    c.write_text(render_toml(example_config()).replace('path = "drivecanary.db"', f'path = "{tmp_path}/d.db"'))
+    runner = CliRunner()
+    assert runner.invoke(app, ["-c", str(c), "db", "migrate"]).exit_code == 0
+    desktop, nas = str(TEXT / "desktop-hdd-2017.txt"), str(TEXT / "nas-hdd-errors-2017.txt")
+    assert runner.invoke(app, ["-c", str(c), "import", "smartctl-text", desktop]).exit_code == 0, "no host said"
+    r = runner.invoke(app, ["-c", str(c), "import", "smartctl-text", desktop, "--host", "storage1"])
+    assert r.exit_code == 0 and "host storage1: added, retired" in r.output and "already stored" in r.output
+    r = runner.invoke(app, ["-c", str(c), "import", "smartctl-text", nas, "--host", "storage2"])
+    assert r.exit_code == 0 and "stored; a new drive" in r.output
+
+    factory = sessionmaker_for(make_engine(load_config(c).db_path))
+    with factory() as s:
+        hosts = {h.name: h for h in s.scalars(select(Host))}
+        assert {n: h.state for n, h in hosts.items()} == {"storage1": "retired", "storage2": "retired"}
+        assert not hosts["storage1"].active and hosts["storage1"].address == "storage1"
+        runs = {d.serial: h for d, h in s.execute(select(Drive, SmartRun.host_id).join(SmartRun))}
+        assert runs == {"FAKE00001": hosts["storage1"].id, "FAKE00000002": hosts["storage2"].id}, "filed after the fact"
+        seen = s.scalars(select(DriveSighting)).all()
+        assert len(seen) == 2 and not any(x.current for x in seen) and {x.dev_name for x in seen} == {""}
+        desktop_id = s.scalar(select(Drive.id).where(Drive.serial_key == "FAKE00001"))
+
+    client = TestClient(create_app(load_config(c)))
+    front = client.get("/").text
+    summary = front.split('<section class="summary">')[1].split("</section>")[0]
+    assert "storage1" not in front and "skipped" not in summary, "history, not status"
+    hosts_page = client.get("/hosts").text
+    assert "<h2>Retired hosts</h2>" in hosts_page and "never by drivecanary" in hosts_page
+    assert hosts_page.index("storage1") > hosts_page.index("<h2>Retired hosts</h2>"), "not in the live table"
+    host_page = client.get("/host/storage1").text
+    assert "Retired: this host is not collected from" in host_page and "<dt>self-tests</dt>" not in host_page
+    assert "<h2>Retired drives last seen here</h2>" in host_page and "TOSHIBA DT01ACA300" in host_page
+    drive_page = client.get(f"/drive/{desktop_id}").text
+    where = drive_page.split("<dt>where</dt>")[1].split("</dd>")[0]
+    assert ">storage1</a>" in where and "until 2017-10-26 23:17 EDT" in where
+    assert (
+        "Retired: no host reports this drive anymore. It becomes unretired when a host reports it again." in drive_page
+    )
+    assert "8.9 years ago" in drive_page, "read so long ago, said in years"
+    retired = client.get("/drives/retired").text
+    assert ">storage2</a>" in retired and ">storage1</a>" in retired and "no host on record" not in retired

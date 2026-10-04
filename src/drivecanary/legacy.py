@@ -23,7 +23,7 @@ from sqlalchemy.orm import Session
 
 from drivecanary.config import StatusConfig
 from drivecanary.ingest import store_run
-from drivecanary.models import Drive, SampleSource, SmartRun
+from drivecanary.models import Drive, DriveSighting, Host, HostState, SampleSource, SmartRun
 from drivecanary.smart import parse_report
 from drivecanary.timeutil import from_epoch, local_to_utc
 
@@ -204,11 +204,24 @@ class Imported:
     new_drive: bool
 
 
-def import_text(
-    session: Session, text: str, *, tz: ZoneInfo, cfg: StatusConfig, host_id: int | None = None
-) -> Imported:
-    """Store one capture as a reading of its drive. A drive drivecanary has never seen is created retired, so a
-    2017 reading does not sit on the front page as stale; the first live reading of it clears that."""
+def retired_host(session: Session, name: str) -> tuple[Host, bool]:
+    """The host a capture came from: the one of that name, or a new one, retired, if there is none. A host
+    whose history is all that is left is kept so that its drives can say where they were; `host set NAME
+    --state pending` and its install bring it back."""
+    host = session.scalar(select(Host).where(Host.name == name))
+    if host is not None:
+        return host, False
+    host = Host(name=name, address=name, state=HostState.RETIRED.value)
+    session.add(host)
+    session.flush()
+    return host, True
+
+
+def import_text(session: Session, text: str, *, tz: ZoneInfo, cfg: StatusConfig, host: Host | None = None) -> Imported:
+    """Store one capture as a reading of its drive, on `host` if it is said where it was taken. A drive
+    drivecanary has never seen is created retired, so a 2017 reading does not sit on the front page as stale;
+    the first live reading of it clears that. Again with a host for a reading already stored: it is filed
+    under that host."""
     doc = to_json(text, tz)
     report = parse_report(doc)
     assert report.local_time is not None
@@ -244,8 +257,26 @@ def import_text(
     if when < drive.first_seen_at:
         drive.first_seen_at = when
     session.flush()
-    stored = session.scalar(select(SmartRun.id).where(SmartRun.drive_id == drive.id, SmartRun.collected_at == when))
+    if host is not None:
+        seen = session.scalar(
+            select(DriveSighting).where(DriveSighting.drive_id == drive.id, DriveSighting.host_id == host.id)
+        )
+        if seen is None:
+            # the capture does not say which device node it was: it was on this host, then
+            session.add(
+                DriveSighting(
+                    drive_id=drive.id,
+                    host_id=host.id,
+                    dev_name="",
+                    first_seen_at=when,
+                    last_seen_at=when,
+                    current=False,
+                )
+            )
+    stored = session.scalar(select(SmartRun).where(SmartRun.drive_id == drive.id, SmartRun.collected_at == when))
     if stored is not None:
+        if host is not None and stored.host_id is None:
+            stored.host_id = host.id
         return Imported(drive, when, stored=False, new_drive=new_drive)
     store_run(
         session,
@@ -253,7 +284,7 @@ def import_text(
         report,
         source=SampleSource.LEGACY,
         collected_at=when,
-        host_id=host_id,
+        host_id=host.id if host is not None else None,
         attempt_id=None,
         raw=json.dumps(doc).encode(),
         cfg=cfg,

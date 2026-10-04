@@ -272,6 +272,7 @@ def create_app(config: Config | None = None) -> FastAPI:
             cursors=cursors,
             installed=installed,
             selftests=queries.host_selftests(db, cfg, host, utcnow()),
+            retired=[d for d in queries.retired_drive_rows(db, cfg, utcnow()) if d.host and d.host.id == host.id],
             current=current,
             behind=behind,
         )
