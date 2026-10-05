@@ -90,3 +90,43 @@ def test_an_unreachable_host_says_why(cfg: Config, factory: sessionmaker[Session
     h = TestClient(create_app(cfg)).get("/api/v1/host/hv").json()
     assert h["ok"] is False and h["status"] == "error"
     assert h["problems"][0].startswith("host unreachable since 20") and "No route to host" in h["problems"][0]
+
+
+def test_the_api_describes_itself(cfg: Config) -> None:
+    client = TestClient(create_app(cfg))
+    r = client.get("/api/v1/openapi.json")
+    assert r.status_code == 200
+    doc = r.json()
+    assert doc["openapi"].startswith("3.") and doc["info"]["title"] == "drivecanary"
+    assert "poll `GET /api/v1/hosts`" in doc["info"]["description"]
+    assert set(doc["paths"]) == {"/api/v1/hosts", "/api/v1/host/{name}", "/healthz"}, "the pages are not API"
+    one = doc["paths"]["/api/v1/host/{name}"]["get"]
+    assert one["responses"]["200"]["content"]["application/json"]["schema"]["$ref"].endswith("/Host")
+    assert one["responses"]["404"]["content"]["application/json"]["schema"]["$ref"].endswith("/Error")
+    schemas = doc["components"]["schemas"]
+    for name in ("Host", "HostSummary", "HostList", "Drive", "Pool", "Error"):
+        props = schemas[name]["properties"]
+        assert all(p.get("description") for p in props.values()), f"{name}: every field says what it is"
+    assert schemas["Drive"]["properties"]["verdict"]["enum"] == [
+        "ok",
+        "warn",
+        "fail",
+        "error",
+        "stale",
+        "unknown",
+        "skipped",
+    ]
+    assert client.get("/api/docs").status_code == 200
+
+
+def test_the_api_names_every_value_the_database_can_hold() -> None:
+    from typing import get_args
+
+    from drivecanary import api
+    from drivecanary.models import HostState, PoolKind, Transport, Verdict
+
+    assert set(get_args(api.VerdictName)) == {v.value for v in Verdict}
+    assert set(get_args(api.StatusName)) == {v.value for v in Verdict} - {"skipped"} | {"paused", "retired"}
+    assert set(get_args(api.Host.model_fields["state"].annotation)) == {s.value for s in HostState}
+    assert set(get_args(api.Host.model_fields["transport"].annotation)) == {t.value for t in Transport}
+    assert set(get_args(api.Pool.model_fields["kind"].annotation)) == {k.value for k in PoolKind}

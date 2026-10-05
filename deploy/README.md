@@ -103,6 +103,9 @@ none either: keep both on the LAN).
   overall `ok`.
 - `GET /api/v1/host/NAME`: one host, with its drives and pools; 404 and `{"error": ...}` for a name it does
   not have.
+- `GET /api/v1/openapi.json`: all of this described for machines (OpenAPI 3.1, every field explained), which
+  is what to point a client generator, or a model writing a client, at; `/api/docs` is the same to read and
+  try in a browser.
 
 ```json
 {

@@ -151,7 +151,14 @@ def script_versions() -> dict[str, int]:
 def create_app(config: Config | None = None) -> FastAPI:
     cfg = config or load_config()
     engine = make_engine(cfg.db_path, echo=cfg.db.echo_sql)
-    app = FastAPI(title="drivecanary", docs_url=None, redoc_url=None, openapi_url=None)
+    app = FastAPI(
+        title="drivecanary",
+        version=f"{api.VERSION}.0 ({__version__})",
+        description=api.DESCRIPTION,
+        openapi_url=f"/api/v{api.VERSION}/openapi.json",  # what a client, or a model writing one, reads
+        docs_url="/api/docs",
+        redoc_url=None,
+    )
     app.state.config = cfg
     app.state.factory = sessionmaker_for(engine)
     app.mount("/static", StaticFiles(directory=str(STATIC)), name="static")
@@ -191,12 +198,12 @@ def create_app(config: Config | None = None) -> FastAPI:
         )
         return {"hosts": hosts, "drives": drives}
 
-    @app.get("/", response_class=HTMLResponse)
+    @app.get("/", response_class=HTMLResponse, include_in_schema=False)
     def index(request: Request, db: Db) -> HTMLResponse:
         ov = queries.overview(db, cfg)
         return page(request, "index.html", ov=ov)
 
-    @app.get("/drive/{drive_id}", response_class=HTMLResponse)
+    @app.get("/drive/{drive_id}", response_class=HTMLResponse, include_in_schema=False)
     def drive_page(request: Request, db: Db, drive_id: int, window: str = "30d") -> HTMLResponse:
         drive = db.get(Drive, drive_id)
         if drive is None:
@@ -234,7 +241,7 @@ def create_app(config: Config | None = None) -> FastAPI:
             window=window if window in ("7d", "30d", "90d", "1y", "all") else "30d",
         )
 
-    @app.get("/api/drives/{drive_id}/series")
+    @app.get("/api/drives/{drive_id}/series", include_in_schema=False)  # the charts', not for others
     def drive_series(db: Db, drive_id: int, metric: Annotated[str, Query()], window: str = "30d") -> JSONResponse:
         if db.get(Drive, drive_id) is None:
             raise HTTPException(404, "no such drive")
@@ -244,7 +251,7 @@ def create_app(config: Config | None = None) -> FastAPI:
             raise HTTPException(400, f"unknown metric {metric!r}") from None
         return JSONResponse({"metric": metric, "window": window, "points": pts})
 
-    @app.get("/drives/retired", response_class=HTMLResponse)
+    @app.get("/drives/retired", response_class=HTMLResponse, include_in_schema=False)
     def retired_page(request: Request, db: Db) -> HTMLResponse:
         return page(request, "retired.html", drives=queries.retired_drive_rows(db, cfg, utcnow()))
 
@@ -256,24 +263,24 @@ def create_app(config: Config | None = None) -> FastAPI:
         is_lan_ip = re.fullmatch(r"\d{1,3}(\.\d{1,3}){3}", asked) and not asked.startswith("127.")
         return {"hub_key": hub_key, "hub_ip": asked if is_lan_ip else None}
 
-    @app.get("/hosts/retired", response_class=HTMLResponse)
+    @app.get("/hosts/retired", response_class=HTMLResponse, include_in_schema=False)
     def retired_hosts_page(request: Request, db: Db) -> HTMLResponse:
         return page(request, "retired_hosts.html", **retired_hosts(db))
 
-    @app.get("/retired", response_class=HTMLResponse)
+    @app.get("/retired", response_class=HTMLResponse, include_in_schema=False)
     def retired_all_page(request: Request, db: Db) -> HTMLResponse:
         retired_rows = queries.retired_drive_rows(db, cfg, utcnow())
         return page(request, "retired_all.html", retired_rows=retired_rows, **retired_hosts(db))
 
-    @app.get("/drives", response_class=HTMLResponse)
+    @app.get("/drives", response_class=HTMLResponse, include_in_schema=False)
     def drives_page(request: Request, db: Db) -> HTMLResponse:
         return page(request, "drives.html", ov=queries.overview(db, cfg))
 
-    @app.get("/hosts", response_class=HTMLResponse)
+    @app.get("/hosts", response_class=HTMLResponse, include_in_schema=False)
     def hosts_page(request: Request, db: Db) -> HTMLResponse:
         return page(request, "hosts.html", ov=queries.overview(db, cfg), **hub_identity(request))
 
-    @app.get("/host/{ref}", response_class=HTMLResponse)
+    @app.get("/host/{ref}", response_class=HTMLResponse, include_in_schema=False)
     def host_page(request: Request, db: Db, ref: str) -> HTMLResponse:
         # by name, so that a link can be written from elsewhere without knowing a number; a number still works
         host = db.scalar(select(Host).where(Host.name == ref))
@@ -312,12 +319,12 @@ def create_app(config: Config | None = None) -> FastAPI:
             behind=behind,
         )
 
-    @app.get("/runs", response_class=HTMLResponse)
+    @app.get("/runs", response_class=HTMLResponse, include_in_schema=False)
     def runs_page(request: Request, db: Db) -> HTMLResponse:
         runs = list(db.scalars(select(CollectionRun).order_by(CollectionRun.started_at.desc()).limit(60)))
         return page(request, "runs.html", runs=runs)
 
-    @app.get("/pool/{pool_id}", response_class=HTMLResponse)
+    @app.get("/pool/{pool_id}", response_class=HTMLResponse, include_in_schema=False)
     def pool_page(request: Request, db: Db, pool_id: int) -> HTMLResponse:
         pool = db.get(Pool, pool_id)
         if pool is None:
@@ -340,30 +347,32 @@ def create_app(config: Config | None = None) -> FastAPI:
             scrubbing=scrubbing,
         )
 
-    @app.get("/api/v1/hosts")
-    def api_hosts(db: Db) -> JSONResponse:
-        """Every host but the retired ones, with ok, status and problems."""
+    @app.get("/api/v1/hosts", response_model=api.HostList, tags=["hosts"])
+    def api_hosts(db: Db) -> api.HostList:
+        """Every host but the retired ones, in brief: is each ok, and if not, why."""
         ov = queries.overview(db, cfg)
-        hosts = sorted((h for h in ov.hosts if h.host.state != "retired"), key=lambda h: h.host.name)
         out = []
-        for h in hosts:
+        for h in sorted((h for h in ov.hosts if h.host.state != "retired"), key=lambda h: h.host.name):
             drives = [d for d in ov.drives if d.host is not None and d.host.id == h.host.id]
-            pools = [p for p in ov.pools if p.host.id == h.host.id]
-            out.append(api.host_json(h, drives, pools, detail=False))
-        return JSONResponse({"ok": all(h["ok"] for h in out), "hosts": out})
+            out.append(api.summary(h, drives, [p for p in ov.pools if p.host.id == h.host.id]))
+        return api.HostList(ok=all(h.ok for h in out), hosts=out)
 
-    @app.get("/api/v1/host/{name}")
-    def api_host(db: Db, name: str) -> JSONResponse:
-        """One host, with its drives and pools."""
+    @app.get(
+        "/api/v1/host/{name}",
+        response_model=api.Host,
+        responses={404: {"model": api.Error, "description": "No host of that name"}},
+        tags=["hosts"],
+    )
+    def api_host(db: Db, name: str) -> api.Host | JSONResponse:
+        """One host: is it ok, and if not, why; with its drives and pools. Retired hosts can be asked for too."""
         ov = queries.overview(db, cfg)
         found = next((h for h in ov.hosts if h.host.name == name), None)
         if found is None:
             return JSONResponse({"error": f"no such host: {name}"}, status_code=404)
         drives = [d for d in ov.drives if d.host is not None and d.host.id == found.host.id]
-        pools = [p for p in ov.pools if p.host.id == found.host.id]
-        return JSONResponse(api.host_json(found, drives, pools, detail=True))
+        return api.detail(found, drives, [p for p in ov.pools if p.host.id == found.host.id])
 
-    @app.get("/healthz")
+    @app.get("/healthz", tags=["service"])
     def healthz(db: Db) -> JSONResponse:
         last = db.scalar(select(CollectionRun).order_by(CollectionRun.started_at.desc()).limit(1))
         return JSONResponse(
@@ -374,7 +383,7 @@ def create_app(config: Config | None = None) -> FastAPI:
             }
         )
 
-    @app.get("/favicon.ico")
+    @app.get("/favicon.ico", include_in_schema=False)
     def favicon() -> Response:
         """For whatever asks for the usual path without reading the page; the pages name their icons."""
         return FileResponse(STATIC / "favicon-32.png", media_type="image/png")

@@ -14,7 +14,8 @@ Drive health monitoring for a LAN:
 - A drive keeps its history when it moves between hosts, or is retired and comes back
 - Imports history already on your hosts (smartd's attribute logs) and old `smartctl -a` captures
 - Two ways for data to reach the hub VM: it pulls over ssh, or the host pushes over HTTP
-- A JSON API for other services: `GET /api/v1/host/NAME` says whether a host and its drives are ok, and why not
+- A JSON API for other services: `GET /api/v1/host/NAME` says whether a host and its drives are ok, and why not;
+  `/api/v1/openapi.json` describes it
 - Runs on Debian and Proxmox hosts and OPNsense routers; hosts need nothing but smartmontools and a
   read-only probe
 
