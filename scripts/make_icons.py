@@ -16,15 +16,15 @@ from PIL import Image, ImageDraw, ImageFilter
 ROOT = Path(__file__).resolve().parents[1]
 STATIC = ROOT / "src" / "drivecanary" / "web" / "static"
 
-#: where things are in docs/logo.png (653 x 768), read off a ruler laid over it
-LOGO_SIZE = (653, 768)
-TILE = (85, 94, 567, 578)  # the squircle, just inside its edge
-TILE_RADIUS = 0.23  # of its width
-CANARY = (315, 100, 595, 400)  # a box with the whole bird in it
+#: where things are in docs/logo.png (871 x 1024), read off a ruler laid over it
+LOGO_SIZE = (871, 1024)
+TILE = (106, 119, 767, 784)  # the squircle's bounding box; its shape is the logo's own transparency
+CANARY = (440, 140, 772, 530)  # a box with the whole bird in it, and room above the head for the closing below
 #: the logo's background is transparent; the bird is cut out by colour against the pale grey it was drawn on
 BACKDROP = (240, 245, 248)
-INSIDE = (130, 150)  # a point of that box that is certainly bird
-HEAD_ENDS = 140  # above this row of the box, holes in the yellow are eyes and beak, and are filled
+FILL = (238, 242, 246)  # the squircle's own background, for the square icon's corners
+INSIDE = (113, 204)  # a point of that box that is certainly bird
+HEAD_ENDS = 168  # above this row of the box, holes in the yellow are eyes and beak, and are filled
 
 
 def cut_out_canary(logo: Image.Image) -> Image.Image:
@@ -66,34 +66,32 @@ def centred(canary: Image.Image, size: int, pad: float) -> Image.Image:
 
 
 def tile(logo: Image.Image, size: int, *, rounded: bool) -> Image.Image:
-    """The logo's squircle. Rounded, there is nothing behind its corners; square, for a phone that rounds
-    an icon itself and paints black wherever it finds transparency."""
+    """The logo's squircle. Rounded, it is the squircle's own shape, with nothing behind its corners; square,
+    for a phone that rounds an icon itself and paints black wherever it finds transparency, the corners are
+    the squircle's own pale fill."""
     left, top, right, bottom = TILE
     side = min(right - left, bottom - top)
-    out = logo.crop((left, top, left + side, top + side)).convert("RGBA")
-    if rounded:
-        mask = Image.new("L", (side * 4, side * 4), 0)
-        ImageDraw.Draw(mask).rounded_rectangle(
-            (0, 0, side * 4 - 1, side * 4 - 1), radius=int(side * 4 * TILE_RADIUS), fill=255
-        )
-        out.putalpha(mask.resize((side, side), Image.LANCZOS))
-    return out.resize((size, size), Image.LANCZOS)
+    out = logo.crop((left, top, left + side, top + side))
+    if not rounded:
+        filled = Image.new("RGBA", out.size, (*FILL, 255))
+        filled.alpha_composite(out)
+        out = filled
+    return out.convert("RGBa").resize((size, size), Image.LANCZOS).convert("RGBA")
 
 
 def main() -> None:
     drawn = Image.open(ROOT / "docs" / "logo.png").convert("RGBA")
     if drawn.size != LOGO_SIZE:
         raise SystemExit(f"docs/logo.png is {drawn.size}, not {LOGO_SIZE}: measure TILE, CANARY and the rest again")
-    logo = Image.new("RGBA", drawn.size, (*BACKDROP, 255))
-    logo.alpha_composite(drawn)
-    logo = logo.convert("RGB")
-    canary = cut_out_canary(logo)
+    flat = Image.new("RGBA", drawn.size, (*BACKDROP, 255))
+    flat.alpha_composite(drawn)
+    canary = cut_out_canary(flat.convert("RGB"))
     made = {
         "favicon-16.png": centred(canary, 16, 0.0),  # no room to spare at this size
         "favicon-32.png": centred(canary, 32, 0.02),
-        "icon-192.png": tile(logo, 192, rounded=True),
-        "apple-touch-icon.png": tile(logo, 180, rounded=False),
-        "logo-tile.png": tile(logo, 88, rounded=True),  # the header's, at twice the size it is shown
+        "icon-192.png": tile(drawn, 192, rounded=True),
+        "apple-touch-icon.png": tile(drawn, 180, rounded=False),
+        "logo-tile.png": tile(drawn, 88, rounded=True),  # the header's, at twice the size it is shown
     }
     for name, image in made.items():
         image.save(STATIC / name, optimize=True)
