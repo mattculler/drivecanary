@@ -94,6 +94,36 @@ Every attempt is on the host's page with a class and a reason:
 A host that is away for months: `drivecanary host set NAME --state paused` stops the attempts (and the
 counting); `--state pending` re-arms it. `--state retired` keeps its history and takes it off the page.
 
+## Asking from another service
+
+The page's verdicts as JSON, on the page's port, read-only like the page and with no login (the page has
+none either: keep both on the LAN).
+
+- `GET /api/v1/hosts`: every host but the retired ones, each with `ok`, `status` and `problems`, and an
+  overall `ok`.
+- `GET /api/v1/host/NAME`: one host, with its drives and pools; 404 and `{"error": ...}` for a name it does
+  not have.
+
+```json
+{
+  "host": "atlas", "ok": false, "status": "fail",
+  "problems": ["/dev/sdb Hitachi HDS721050DLE630 (MSK423Y20S3HBC): fail: SMART overall health: FAILED; ..."],
+  "state": "ok", "transport": "pull", "last_success_at": "2026-10-04T23:01:12Z", "last_attempt_at": "...",
+  "drive_count": 3, "pool_count": 3, "url": "/host/atlas", "api": "/api/v1/host/atlas",
+  "drives": [{"id": 1, "dev": "/dev/sda", "model": "WDC WD140EDFZ-11A0VA0", "serial": "9RK1XXXX", "kind": "hdd",
+              "capacity_bytes": 14000519643136, "verdict": "ok", "reasons": [], "temperature_c": 32,
+              "power_on_hours": 1730, "read_at": "...", "self_test_percent": null, "url": "/drive/1"}],
+  "pools": [{"id": 1, "name": "tank", "kind": "zfs", "health": "ONLINE", "verdict": "ok", "reasons": [],
+             "scrubbing": null, "read_at": "...", "url": "/pool/1"}]
+}
+```
+
+`ok` is true when nothing about the host, its drives or its pools is failing, warning, unreadable, stale or
+unknown; a drive asleep in standby counts as fine. `status` is the worst of them in the page's words (`ok`,
+`warn`, `fail`, `error`, `stale`, `unknown`, or the host's `paused` or `retired`), and `problems` says what,
+one line each. Times are UTC, ISO 8601. The answer is always 200 for a host it has, whatever its state: a
+monitor reads `ok`.
+
 ## smartd on the hosts
 
 Debian's default `smartd.conf` (`DEVICESCAN -d removable -n standby -m root -M exec ...`) writes the attribute

@@ -17,7 +17,7 @@ from markupsafe import Markup
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from drivecanary import __version__, queries
+from drivecanary import __version__, api, queries
 from drivecanary.config import Config, load_config
 from drivecanary.db import make_engine, sessionmaker_for
 from drivecanary.models import AttrlogCursor, CollectionRun, Drive, Host, HostAttempt, Pool, Verdict
@@ -339,6 +339,29 @@ def create_app(config: Config | None = None) -> FastAPI:
             rows=rows,
             scrubbing=scrubbing,
         )
+
+    @app.get("/api/v1/hosts")
+    def api_hosts(db: Db) -> JSONResponse:
+        """Every host but the retired ones, with ok, status and problems."""
+        ov = queries.overview(db, cfg)
+        hosts = sorted((h for h in ov.hosts if h.host.state != "retired"), key=lambda h: h.host.name)
+        out = []
+        for h in hosts:
+            drives = [d for d in ov.drives if d.host is not None and d.host.id == h.host.id]
+            pools = [p for p in ov.pools if p.host.id == h.host.id]
+            out.append(api.host_json(h, drives, pools, detail=False))
+        return JSONResponse({"ok": all(h["ok"] for h in out), "hosts": out})
+
+    @app.get("/api/v1/host/{name}")
+    def api_host(db: Db, name: str) -> JSONResponse:
+        """One host, with its drives and pools."""
+        ov = queries.overview(db, cfg)
+        found = next((h for h in ov.hosts if h.host.name == name), None)
+        if found is None:
+            return JSONResponse({"error": f"no such host: {name}"}, status_code=404)
+        drives = [d for d in ov.drives if d.host is not None and d.host.id == found.host.id]
+        pools = [p for p in ov.pools if p.host.id == found.host.id]
+        return JSONResponse(api.host_json(found, drives, pools, detail=True))
 
     @app.get("/healthz")
     def healthz(db: Db) -> JSONResponse:
