@@ -1,5 +1,4 @@
 {# Retired drives, each as it last was. Give it rows (DriveRow) and show_host (where each was last seen). #}
-{% set any_why = rows|selectattr("reasons")|list %}
 <div class="tbl"><table>
 <tr>
   <th>last said</th><th>drive</th><th>serial</th><th class="num">size</th>
@@ -9,11 +8,11 @@
   <th class="num" title="188 Command_Timeout">timeout</th>
   <th class="num" title="197 Current_Pending_Sector">pending</th>
   <th class="num" title="198 Offline_Uncorrectable">offline</th>
-  <th>last reading</th>{% if show_host %}<th>last seen in</th>{% endif %}{% if any_why %}<th class="wrap">why</th>{% endif %}
+  <th>last reading</th>{% if show_host %}<th>last seen in</th>{% endif %}
 </tr>
 {% for d in rows %}
 {% set r = d.latest %}
-<tr class="r-{{ d.verdict.value }}">
+<tr class="r-{{ d.verdict.value }}{{ " has-why" if d.reasons }}">
   <td>{% with v=d.verdict %}{% include "_badge.html" %}{% endwith %}</td>
   <td><span class="kind">{{ d.drive.kind }}</span><a href="/drive/{{ d.drive.id }}">{{ d.drive.label }}</a></td>
   <td class="muted">{{ d.drive.serial or d.drive.serial_key }}</td>
@@ -22,8 +21,8 @@
   {% for a in (5, 187, 188, 197, 198) %}<td class="num">{{ d.counters[a] if a in d.counters else '' }}</td>{% endfor %}
   <td>{% if r %}{{ r.collected_at|dt }} <span class="muted">({{ r.source }})</span>{% else %}<span class="muted">none</span>{% endif %}</td>
   {% if show_host %}<td>{% if d.host %}<a class="plain" href="/host/{{ d.host.name|urlencode }}">{{ d.host.name }}</a>{% if d.dev_name %} <span class="muted">{{ d.dev_name }}</span>{% endif %}{% else %}<span class="muted">no host on record</span>{% endif %}</td>{% endif %}
-  {% if any_why %}<td class="why">{{ d.reasons|join('; ') }}</td>{% endif %}
 </tr>
+{% if d.reasons %}<tr class="r-{{ d.verdict.value }} why-row"><td></td><td colspan="{{ 11 if show_host else 10 }}" class="why"><div>{{ d.reasons|join('; ') }}</div></td></tr>{% endif %}
 {% else %}
 <tr><td colspan="13" class="muted">No retired drives.</td></tr>
 {% endfor %}

@@ -36,9 +36,12 @@ def test_pages(cfg: Config, factory: sessionmaker[Session], probe_env: ProbeEnv)
     assert "<h2>Drives</h2>" in body and "<h2>Pools</h2>" in body and "<h2>Hosts</h2>" in body, (
         "the front page as it was"
     )
-    assert body.count('<th class="wrap">why</th>') == 2, (
-        "drives and pools have reasons to give; the hosts table has its own"
+    assert ">why<" not in body, "no why column: it was a few characters wide at the end of fifteen"
+    hitachi = body.split("Hitachi HDS721050DLE630")[1].split("</tr>")[1]
+    assert (
+        'class="r-fail why-row"' in hitachi and 'colspan="13" class="why"><div>SMART overall health: FAILED;' in hitachi
     )
+    assert body.count(' why-row"') == 3, "the failing drive, and the two pools with something to say"
     drives_page = client.get("/drives").text
     assert "Hitachi HDS721050DLE630" in drives_page and "<h2>Pools</h2>" not in drives_page, "the drives table alone"
     host = client.get("/host/atlas").text

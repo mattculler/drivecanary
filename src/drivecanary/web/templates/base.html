@@ -18,7 +18,7 @@
   header .brand { color: #fbbf24; font-weight: 700; }
   header .brand img { height: 44px; width: 44px; vertical-align: middle; margin-right: 8px; }
   header small { color: #9ca3af; margin-left: auto; }
-  main { padding: 12px 16px; max-width: 1400px; }
+  main { padding: 12px 16px; max-width: 1700px; }
   h1 { font-size: 20px; margin: 4px 0 10px; } h2 { font-size: 16px; margin: 18px 0 6px; }
   .tbl { overflow-x: auto; }
   table { border-collapse: collapse; width: 100%; background: #fff; }
@@ -36,6 +36,11 @@
   .summary .counts span { margin-right: 10px; } .summary .muted, .muted { color: #6b7280; }
   .problem { color: #b91c1c; font-weight: 600; }
   .why { color: #444; font-size: 12px; white-space: normal; max-width: 28em; }
+  /* why a row is not ok: a line of its own under the row, as wide as the table */
+  tr.has-why td { border-bottom: none; padding-bottom: 1px; }
+  tr.why-row td { padding-top: 0; } tr.why-row td.why { max-width: none; }
+  /* no wider than the window, where the table is wider than that and scrolls */
+  tr.why-row td.why div { max-width: min(100vw - 150px, 1550px); }
   .kv { display: grid; grid-template-columns: max-content 1fr; gap: 3px 14px; background: #fff; padding: 8px 12px; border: 1px solid #e5e7eb; border-radius: 4px; }
   .kv dt { color: #6b7280; } .kv dd { margin: 0; }
   .charts { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 12px; }

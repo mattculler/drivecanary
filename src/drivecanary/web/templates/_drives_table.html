@@ -1,6 +1,6 @@
 {# Drives in service. Give it rows (DriveRow), show_host (a host column; else the device), and empty (what to say
-   when there are none). #}
-{% set any_why = rows|selectattr("reasons")|list %}
+   when there are none). Why a drive is not ok goes on a line of its own under its row, the width of the table:
+   as a last column it was a few characters wide. #}
 <div class="tbl"><table>
 <tr>
   <th>status</th><th>{{ "host" if show_host else "dev" }}</th><th>drive</th><th>serial</th><th class="num">size</th>
@@ -11,11 +11,11 @@
   <th class="num" title="197 Current_Pending_Sector">pending</th>
   <th class="num" title="198 Offline_Uncorrectable">offline</th>
   <th title="solid state: rated endurance used. NVMe adds: / available spare / media errors">wear</th>
-  <th>read</th>{% if any_why %}<th class="wrap">why</th>{% endif %}
+  <th>read</th>
 </tr>
 {% for d in rows %}
 {% set r = d.latest %}
-<tr class="r-{{ d.verdict.value }}">
+<tr class="r-{{ d.verdict.value }}{{ " has-why" if d.reasons }}">
   <td>{% with v=d.verdict %}{% include "_badge.html" %}{% endwith %}</td>
   {% if show_host %}<td>{% if d.host %}<a class="plain" href="/host/{{ d.host.name|urlencode }}">{{ d.host.name }}</a>{% if d.dev_name %} <span class="muted">{{ d.dev_name }}</span>{% endif %}{% else %}<span class="muted">?</span>{% endif %}</td>
   {% else %}<td>{{ d.dev_name or '' }}</td>{% endif %}
@@ -27,9 +27,9 @@
   {% for a in (5, 187, 188, 197, 198) %}<td class="num">{{ d.counters[a] if a in d.counters else '' }}</td>{% endfor %}
   <td>{% if r and r.nvme_percentage_used is not none %}{{ r.nvme_percentage_used }}% / {{ r.nvme_available_spare }}% / {{ r.nvme_media_errors }}{% elif r and r.endurance_used is not none %}{{ r.endurance_used }}%{% endif %}</td>
   <td class="muted" title="{{ r.collected_at|dt if r else '' }}">{{ r.collected_at|ago(now) if r else 'never' }}</td>
-  {% if any_why %}<td class="why">{{ d.reasons|join('; ') }}</td>{% endif %}
 </tr>
+{% if d.reasons %}<tr class="r-{{ d.verdict.value }} why-row"><td></td><td colspan="13" class="why"><div>{{ d.reasons|join('; ') }}</div></td></tr>{% endif %}
 {% else %}
-<tr><td colspan="15" class="muted">{{ empty }}</td></tr>
+<tr><td colspan="14" class="muted">{{ empty }}</td></tr>
 {% endfor %}
 </table></div>
