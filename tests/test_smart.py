@@ -207,3 +207,39 @@ def test_helpers() -> None:
     assert leading_int("29545h+14m+30.000s") == 29545 and leading_int("-") is None
     assert wwn_string({"naa": 5, "oui": 3274, "id": 41402544}) == "5000cca02780cb0"[:15] or True
     assert wwn_string({"naa": 5, "oui": 0x000C50, "id": 0x0B1234567}) == "5000c500b1234567"
+
+
+def test_the_newest_self_test_is_found_wherever_the_drive_lists_it() -> None:
+    doc = load_json("smart-ata-full.json")  # 14,551 hours; its log lists hour 14,417 first
+    r = parse_report(doc)
+    assert len(r.selftest_log) == len(doc["ata_smart_self_test_log"]["extended"]["table"])
+    assert r.selftest_log[0].kind == "Short offline" and r.selftest_log[0].passed is True
+    assert r.selftest_log[0].age_hours == 134 and r.selftest_age_hours == 134
+    # firmware that keeps its log's index badly lists an old test first
+    table = doc["ata_smart_self_test_log"]["extended"]["table"]
+    table.insert(
+        0, {"type": {"string": "Extended offline"}, "status": {"string": "Aborted by host"}, "lifetime_hours": 900}
+    )
+    r = parse_report(doc)
+    assert r.selftest_log[0].age_hours == 13651, "listed first, and not the last test"
+    assert (r.selftest_type, r.selftest_last, r.selftest_age_hours) == ("Short offline", "Completed without error", 134)
+    # past 65,536 hours an old entry can pass for a new one: there the drive's own order is taken
+    old = load_json("smart-fail2.json")  # 65,592 hours, its last test logged as hour 42
+    old["ata_smart_self_test_log"]["standard"]["table"].append(
+        {"type": {"string": "Short offline"}, "status": {"string": "Completed without error"}, "lifetime_hours": 50}
+    )
+    assert parse_report(old).selftest_age_hours == 14
+
+
+def test_a_drive_with_no_offline_capabilities_runs_no_self_tests() -> None:
+    doc = load_json("smart-ata-full.json")
+    assert parse_report(doc).selftests_supported is True
+    caps = doc["ata_smart_data"]["capabilities"]
+    del caps["self_tests_supported"]  # smartctl leaves it out when the capability byte is zero
+    assert parse_report(doc).selftests_supported is True, "bit 4 of the byte it does give (0x53)"
+    caps["values"][0] = 0
+    assert parse_report(doc).selftests_supported is False, "a KIOXIA EXCERIA: 'Offline data collection not supported'"
+    caps["values"][0] = 0x0B
+    assert parse_report(doc).selftests_supported is False
+    del doc["ata_smart_data"]["capabilities"]
+    assert parse_report(doc).selftests_supported is None

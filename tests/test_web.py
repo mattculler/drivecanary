@@ -265,6 +265,7 @@ def test_a_drives_page_says_when_it_tests_itself(
     assert "(atlas's clock, America/New_York)" in wd and "the drive says its long test takes 24.6 hours" in wd
     assert "in atlas's smartd.conf: <code>-s (S/../17/./01|L/01/19/./01)</code>" in wd
     assert "last: Short offline, Completed without error" in wd
+    assert "the drive's self-test log, as it lists it (" in wd and "<th>result</th>" in wd
     nvme = client.get(f"/drive/{ids['BTNH93710FS91P0B']}").text.split("<dt>self-tests</dt>")[1].split("</dd>")[0]
     assert "nothing on atlas schedules one" in nvme and "--self-tests" in nvme and "next short" not in nvme
     seagate = client.get(f"/drive/{ids['ZXA00001']}").text

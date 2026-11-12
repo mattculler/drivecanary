@@ -28,7 +28,8 @@
   </dd>
   {% endif %}
   <dt>self-tests</dt><dd>
-    {% if latest and latest.selftest_last %}last: {% if report and report.selftest_type %}{{ report.selftest_type }}, {% endif %}{{ latest.selftest_last }}{% if report and report.selftest_age_hours is not none %}, {{ '{:,}'.format(report.selftest_age_hours) }} power-on hours{% if report.selftest_age_hours|spelled %} ({{ report.selftest_age_hours|spelled }}){% endif %} ago{% endif %}{% else %}<span class="muted">none in the log</span>{% endif %}
+    {% set last_test = (report.selftest_last if report else none) or (latest.selftest_last if latest else none) %}
+    {% if last_test %}last: {% if report and report.selftest_type %}{{ report.selftest_type }}, {% endif %}{{ last_test }}{% if report and report.selftest_age_hours is not none %}, {{ '{:,}'.format(report.selftest_age_hours) }} power-on hours{% if report.selftest_age_hours|spelled %} ({{ report.selftest_age_hours|spelled }}){% endif %} ago{% endif %}{% else %}<span class="muted">none in the log</span>{% endif %}
     {% if report and report.long_test_minutes %} · the drive says its long test takes {{ report.long_test_minutes|taking }}{% endif %}
     {% if report and report.selftests_supported is false %}<div class="muted">This drive says it runs no self-tests (smartctl finds no self-test support), so no schedule applies to it and none is late.</div>
     {% elif selftest and selftest.entry %}
@@ -37,6 +38,13 @@
       {% if selftest.runs_it %}<span class="problem">{{ selftest.runs_it }}</span>{% endif %}</div>
     <div class="muted" title="smartd's own form: T/MM/DD/d/HH is the kind of test, the month, the day of the month, the day of the week and the hour; a dot stands for any">in {{ selftest.host.name }}'s smartd.conf: <code>-s {{ selftest.entry.regex }}</code>{% if selftest.entry.device == "DEVICESCAN" %} (from its DEVICESCAN line){% endif %}{% if selftest.entry.problem %} <span class="problem">{{ selftest.entry.problem }}</span>{% endif %}</div>
     {% elif selftest %}<div class="muted">nothing on {{ selftest.host.name }} schedules one: <code>install-host.sh {{ selftest.host.name }} ... --self-tests</code> would, each drive on a date of its own</div>
+    {% endif %}
+    {% if report and report.selftest_log %}
+    <details class="inline"><summary>the drive's self-test log, as it lists it ({{ report.selftest_log|length }})</summary>
+    <table class="mini">
+    <tr><th>#</th><th>test</th><th>result</th><th class="num" title="the power-on hour the drive logged, which starts again at 65,536">at hour</th><th>ago, in power-on time</th></tr>
+    {% for e in report.selftest_log %}<tr{% if e.passed is false %} class="r-warn"{% endif %}><td>{{ loop.index }}</td><td>{{ e.kind }}</td><td>{{ e.status }}</td><td class="num">{{ '{:,}'.format(e.hours) if e.hours is not none else '' }}</td><td>{% if e.age_hours is not none %}{{ '{:,}'.format(e.age_hours) }} h{% if e.age_hours|spelled %} <span class="muted">({{ e.age_hours|spelled }})</span>{% endif %}{% endif %}</td></tr>
+    {% endfor %}</table></details>
     {% endif %}
   </dd>
   {% if attrlogs %}

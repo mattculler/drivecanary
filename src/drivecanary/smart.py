@@ -211,6 +211,17 @@ NVME_CRITICAL = {
 
 
 @dataclass
+class SelftestEntry:
+    """One line of a drive's self-test log."""
+
+    kind: str  # "Short offline", "Extended offline", ...
+    status: str  # "Completed without error", ...
+    hours: int | None  # the power-on hour it ran at, as the log has it: sixteen bits
+    passed: bool | None
+    age_hours: int | None = None  # power-on hours ago
+
+
+@dataclass
 class SmartReport:
     exit_status: int = 0
     messages: list[str] = field(default_factory=list)
@@ -244,6 +255,7 @@ class SmartReport:
     selftest_progress: int | None = None  # percent done of a self-test running now; None when none is
     long_test_minutes: int | None = None  # what the drive says its long self-test takes
     selftests_supported: bool | None = None  # False: an ATA drive that says it runs no self-tests at all
+    selftest_log: list[SelftestEntry] = field(default_factory=list)  # in the drive's own order
     #: ATA device statistics, "Percentage Used Endurance Indicator": the one wear figure that means the same
     #: on every vendor's SATA SSD, as percentage_used does on NVMe
     endurance_used: int | None = None
@@ -312,6 +324,33 @@ def _get(d: Any, *path: str) -> Any:
             return None
         d = d.get(p)
     return d
+
+
+def _newest(log: list[SelftestEntry], power_on_hours: int | None) -> SelftestEntry | None:
+    """The most recent entry of a self-test log. The drive lists it first, by an index it keeps; some firmware
+    keeps that index badly, so on a drive young enough that the sixteen-bit hour has not come round (when an
+    old entry could pass for a new one) it is the entry with the least age, wherever it is listed."""
+    if not log:
+        return None
+    aged = [e for e in log if e.age_hours is not None]
+    if aged and power_on_hours and power_on_hours < 65536:
+        return min(aged, key=lambda e: e.age_hours or 0)
+    return log[0]
+
+
+def _selftests_supported(capabilities: Any) -> bool | None:
+    """Whether an ATA drive runs self-tests, by its SMART capabilities. smartctl says so outright unless the
+    drive's offline-collection capability byte is zero, when it prints "Offline data collection not
+    supported" and leaves the flag out; self-test support is a bit of that byte, so zero is a no."""
+    if not isinstance(capabilities, dict):
+        return None
+    said = capabilities.get("self_tests_supported")
+    if isinstance(said, bool):
+        return said
+    values = capabilities.get("values")
+    if isinstance(values, list) and values and isinstance(values[0], int):
+        return bool(values[0] & 0x10)
+    return None
 
 
 def parse_report(doc: dict[str, Any]) -> SmartReport:
@@ -383,18 +422,31 @@ def parse_report(doc: dict[str, Any]) -> SmartReport:
     r.selftest_errors = _int(_get(st, "extended", "error_count_total"))
     if r.selftest_errors is None:
         r.selftest_errors = _int(_get(st, "standard", "error_count_total"))
-    if table and isinstance(table[0], dict):
-        status = table[0].get("status") or {}
-        r.selftest_last = str(status.get("string") or "") or None
-        r.selftest_type = str(_get(table[0], "type", "string") or "") or None
-        r.selftest_hours = _int(table[0].get("lifetime_hours"))
+    for row in table:
+        if not isinstance(row, dict):
+            continue
+        status = row.get("status") or {}
+        hours = _int(row.get("lifetime_hours"))
+        passed = status.get("passed")
+        r.selftest_log.append(
+            SelftestEntry(
+                kind=str(_get(row, "type", "string") or ""),
+                status=str(status.get("string") or ""),
+                hours=hours,
+                passed=passed if isinstance(passed, bool) else None,
+                age_hours=(r.power_on_hours - hours) % 65536 if hours is not None and r.power_on_hours else None,
+            )
+        )
+    if (last := _newest(r.selftest_log, r.power_on_hours)) is not None:
+        r.selftest_last = last.status or None
+        r.selftest_type = last.kind or None
+        r.selftest_hours = last.hours
     running = _get(doc, "ata_smart_data", "self_test", "status") or {}
     if isinstance(running, dict) and "in progress" in str(running.get("string") or ""):
         left = _int(running.get("remaining_percent"))
         r.selftest_progress = max(0, min(100, 100 - left)) if left is not None else 0
     r.long_test_minutes = _int(_get(doc, "ata_smart_data", "self_test", "polling_minutes", "extended"))
-    supported = _get(doc, "ata_smart_data", "capabilities", "self_tests_supported")
-    r.selftests_supported = supported if isinstance(supported, bool) else None
+    r.selftests_supported = _selftests_supported(_get(doc, "ata_smart_data", "capabilities"))
     now_testing = _get(doc, "nvme_self_test_log", "current_self_test_operation") or {}
     if isinstance(now_testing, dict) and _int(now_testing.get("value")):
         r.selftest_progress = _int(_get(doc, "nvme_self_test_log", "current_self_test_completion_percent")) or 0
