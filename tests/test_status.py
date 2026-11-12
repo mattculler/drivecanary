@@ -142,3 +142,26 @@ def test_worst() -> None:
     assert worst([Verdict.OK, Verdict.WARN, Verdict.STALE]) == Verdict.WARN
     assert worst([Verdict.OK, Verdict.FAIL]) == Verdict.FAIL
     assert worst([]) == Verdict.UNKNOWN
+
+
+def test_a_test_the_hub_saw_counts_where_the_drives_log_has_lost_it() -> None:
+    doc = load_json("smart-ata-full.json")  # 14,551 hours
+    doc["ata_smart_self_test_log"]["extended"]["table"] = [
+        {"type": {"string": "Short offline"}, "status": {"string": "Completed without error"}, "lifetime_hours": 2000}
+    ]
+    r = parse_report(doc)
+    assert judge_report(r, CFG, scheduled=True)[0] == Verdict.WARN, "by its log, 12,551 hours since a test"
+    assert judge_report(r, CFG, scheduled=True, selftest_seen_hour=14000)[0] == Verdict.OK, "the hub saw one at 14,000"
+    v, why = judge_report(r, CFG, scheduled=True, selftest_seen_hour=13000)
+    assert v == Verdict.WARN and why == [
+        "no self-test for 64 days of power-on time, though one is scheduled every month"
+    ]
+    assert judge_report(r, CFG, scheduled=True, selftest_seen_hour=20000)[0] == Verdict.WARN, (
+        "an hour yet to come: not this drive's"
+    )
+    doc["ata_smart_data"]["self_test"]["status"] = {
+        "value": 249,
+        "string": "in progress, 90% remaining",
+        "remaining_percent": 90,
+    }
+    assert judge_report(parse_report(doc), CFG, scheduled=True)[0] == Verdict.OK, "one is running now"

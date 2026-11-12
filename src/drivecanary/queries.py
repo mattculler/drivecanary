@@ -278,6 +278,28 @@ def overview(session: Session, cfg: Config, now: datetime | None = None) -> Over
 # --------------------------------------------------------------------------- one drive
 
 
+def last_selftest_seen(session: Session, drive_id: int) -> int | None:
+    """The latest power-on hour at which the hub knows a self-test of a drive ran, by its own readings: the
+    newest test any reading found in the drive's log, or the hour of a reading that caught one running. A
+    drive can forget: one WD SSD loses the newest entries of its log whenever its power is cut, and then
+    looks, by its log alone, as if it had not been tested for years."""
+    age = (SmartRun.power_on_hours - SmartRun.selftest_hours + 65536) % 65536  # the log's hour is sixteen bits
+    logged = session.scalar(
+        select(func.max(SmartRun.power_on_hours - age)).where(
+            SmartRun.drive_id == drive_id,
+            SmartRun.power_on_hours > 0,
+            SmartRun.selftest_hours.is_not(None),
+        )
+    )
+    running = session.scalar(
+        select(func.max(SmartRun.power_on_hours)).where(
+            SmartRun.drive_id == drive_id, SmartRun.power_on_hours > 0, SmartRun.selftest_progress.is_not(None)
+        )
+    )
+    seen = [h for h in (logged, running) if h is not None]
+    return int(max(seen)) if seen else None
+
+
 def drive_runs(session: Session, drive_id: int, limit: int = 40) -> list[SmartRun]:
     return list(
         session.scalars(

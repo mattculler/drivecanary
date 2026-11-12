@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 from datetime import UTC, datetime
 
@@ -413,3 +414,68 @@ def test_retiring_a_host_retires_what_was_on_it(
     envelope = probe_env.run_gate("drivecanary-collect").stdout
     collect(cfg, factory, runner=lambda h, a: SshResult(0, envelope, b""))
     assert "retired drive" not in client.get("/").text, "seen on hv now: none of the three is retired"
+
+
+def test_the_hub_remembers_a_self_test_the_drive_forgets(cfg: Config, factory: sessionmaker[Session]) -> None:
+    from drivecanary.ingest import store_run
+    from drivecanary.models import DriveSighting, SampleSource
+    from drivecanary.queries import last_selftest_seen
+    from drivecanary.smart import parse_report
+    from tests.conftest import load_json
+
+    def reading(hours: int, log: list[int], running: bool = False) -> dict:  # type: ignore[type-arg]
+        doc = load_json("smart-ata-full.json")
+        doc["power_on_time"]["hours"] = hours
+        entry = {"type": {"string": "Short offline"}, "status": {"string": "Completed without error"}}
+        doc["ata_smart_self_test_log"]["extended"]["table"] = [dict(entry, lifetime_hours=h) for h in log]
+        if running:
+            doc["ata_smart_data"]["self_test"]["status"] = {
+                "string": "in progress, 90% remaining",
+                "remaining_percent": 90,
+            }
+        return doc
+
+    start = datetime(2026, 10, 4, 12, tzinfo=UTC)
+    with factory() as s:
+        host = Host(name="hv", address="hv", state="ok", last_success_at=start)
+        drive = Drive(model_key="Samsung_SSD_860_EVO_500GB", serial_key="S3YZNB0KB00864E", first_seen_at=start)
+        s.add_all([host, drive])
+        s.flush()
+        s.add(
+            DriveSighting(
+                drive_id=drive.id, host_id=host.id, dev_name="/dev/sda", first_seen_at=start, last_seen_at=start
+            )
+        )
+        assert last_selftest_seen(s, drive.id) is None
+
+        def store(day: int, doc: dict) -> str:  # type: ignore[type-arg]
+            run = store_run(
+                s,
+                drive,
+                parse_report(doc),
+                source=SampleSource.SMARTCTL,
+                collected_at=start.replace(day=day),
+                host_id=host.id,
+                attempt_id=None,
+                raw=json.dumps(doc).encode(),
+                cfg=cfg.status,
+                scheduled=True,
+            )
+            s.commit()
+            return run.verdict
+
+        # tested at hour 30,927 and seen there; then its power is cut and the log is back to an old test
+        assert store(4, reading(30_940, [30_927, 16_911])) == "ok"
+        assert last_selftest_seen(s, drive.id) == 30_927
+        assert store(9, reading(31_050, [16_911, 6_926])) == "ok", "the drive forgot; the hub did not"
+        # caught running: that is a test too, though this drive stamps it hour 0 in its log
+        assert store(17, reading(31_135, [0, 16_911, 6_926], running=True)) == "ok"
+        assert last_selftest_seen(s, drive.id) == 31_135
+        # and 46 days of power-on time later with no test since, it is overdue by what the hub saw
+        assert store(28, reading(31_135 + 46 * 24, [16_911, 6_926])) == "warn"
+        drive_id = drive.id
+    page = TestClient(create_app(cfg)).get(f"/drive/{drive_id}").text
+    assert (
+        "The hub saw a self-test at power-on hour 31,135, 1,104 h (46 days) ago, that the drive's log does not list"
+        in page
+    )

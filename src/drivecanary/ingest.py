@@ -34,6 +34,7 @@ from drivecanary.models import (
     SmartRun,
     Verdict,
 )
+from drivecanary.queries import last_selftest_seen
 from drivecanary.scrub import btrfs_found_errors
 from drivecanary.selftests import is_scheduled
 from drivecanary.smart import SmartReport, parse_report
@@ -260,7 +261,8 @@ def store_run(
     scheduled: bool = False,
 ) -> SmartRun:
     """One reading, judged and stored with its attributes broken out for the trends."""
-    verdict, reasons = judge_report(report, cfg, scheduled=scheduled)
+    seen = last_selftest_seen(session, drive.id) if scheduled else None
+    verdict, reasons = judge_report(report, cfg, scheduled=scheduled, selftest_seen_hour=seen)
     run = SmartRun(
         drive_id=drive.id,
         host_id=host_id,

@@ -39,6 +39,11 @@
     <div class="muted" title="smartd's own form: T/MM/DD/d/HH is the kind of test, the month, the day of the month, the day of the week and the hour; a dot stands for any">in {{ selftest.host.name }}'s smartd.conf: <code>-s {{ selftest.entry.regex }}</code>{% if selftest.entry.device == "DEVICESCAN" %} (from its DEVICESCAN line){% endif %}{% if selftest.entry.problem %} <span class="problem">{{ selftest.entry.problem }}</span>{% endif %}</div>
     {% elif selftest %}<div class="muted">nothing on {{ selftest.host.name }} schedules one: <code>install-host.sh {{ selftest.host.name }} ... --self-tests</code> would, each drive on a date of its own</div>
     {% endif %}
+    {% if report and report.power_on_hours and selftest_seen is not none and selftest_seen <= report.power_on_hours
+          and (report.selftest_age_hours is none or report.power_on_hours - selftest_seen < report.selftest_age_hours - 1) %}
+    {% set seen_age = report.power_on_hours - selftest_seen %}
+    <div>The hub saw a self-test at power-on hour {{ '{:,}'.format(selftest_seen) }}, {{ '{:,}'.format(seen_age) }} h{% if seen_age|spelled %} ({{ seen_age|spelled }}){% endif %} ago, that the drive's log does not list now. It goes by the test it saw: some drives lose the newest entries of their log when their power is cut.</div>
+    {% endif %}
     {% if report and report.selftest_log %}
     <details class="inline"><summary>the drive's self-test log, as it lists it ({{ report.selftest_log|length }})</summary>
     <table class="mini">

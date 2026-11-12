@@ -230,6 +230,7 @@ def create_app(config: Config | None = None) -> FastAPI:
             report=report,
             testing=queries.running_selftest(db, drive.id, cfg, utcnow()),
             selftest=queries.drive_selftest(db, cfg, drive, utcnow()),
+            selftest_seen=queries.last_selftest_seen(db, drive.id),
             attrlogs=queries.drive_attrlogs(db, drive),
             names=attr_names(report),
             logged=logged,

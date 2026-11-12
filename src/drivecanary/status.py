@@ -39,9 +39,13 @@ class _Verdict:
         return self.level, self.reasons
 
 
-def judge_report(r: SmartReport, cfg: StatusConfig, *, scheduled: bool = False) -> tuple[Verdict, list[str]]:
+def judge_report(
+    r: SmartReport, cfg: StatusConfig, *, scheduled: bool = False, selftest_seen_hour: int | None = None
+) -> tuple[Verdict, list[str]]:
     """The verdict on one `smartctl -j -x` reading. `scheduled`: the host has a self-test schedule for this
-    drive, so a last test that is long ago means the schedule has stopped."""
+    drive, so a last test that is long ago means the schedule has stopped. `selftest_seen_hour`: the latest
+    power-on hour at which the hub itself has seen a test of this drive, which counts where the drive's own
+    log no longer has it."""
     if r.standby:
         return Verdict.SKIPPED, ["in standby, left asleep"]
     if not r.identified:
@@ -86,6 +90,12 @@ def judge_report(r: SmartReport, cfg: StatusConfig, *, scheduled: bool = False) 
         else:
             v.warn(f"the self-test log has failed tests ({last or 'see the log'})")
     age = r.selftest_age_hours
+    if r.selftest_progress is not None:
+        age = 0  # one is running now
+    elif selftest_seen_hour is not None and r.power_on_hours and selftest_seen_hour <= r.power_on_hours:
+        # the hub's own memory of a test, where the drive's log has lost it
+        seen_age = r.power_on_hours - selftest_seen_hour
+        age = seen_age if age is None else min(age, seen_age)
     # a drive that runs no self-tests has none to be late with, whatever the schedule says
     if scheduled and cfg.selftest_max_age_days and r.selftests_supported is not False:
         if age is not None and age > cfg.selftest_max_age_days * 24:
