@@ -4,6 +4,7 @@ The fixtures are two real 2017 captures (smartctl 6.6) with their serials and WW
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -215,7 +216,7 @@ def test_the_host_a_capture_came_from(tmp_path: Path, cfg: Config) -> None:
     assert (
         "Retired: no host reports this drive anymore. It becomes unretired when a host reports it again." in drive_page
     )
-    assert "8.9 years ago" in drive_page, "read so long ago, said in years"
+    assert re.search(r"\d+\.\d years ago", drive_page), "read so long ago, said in years"
     retired = client.get("/drives/retired").text
     assert ">storage2</a>" in retired and ">storage1</a>" in retired and "no host on record" not in retired
 

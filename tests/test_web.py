@@ -260,7 +260,8 @@ def test_a_drives_page_says_when_it_tests_itself(
     with factory() as s:
         ids = {d.serial_key: d.id for d in s.scalars(select(Drive))}
     wd = client.get(f"/drive/{ids['9RK1XXXX']}").text.split("<dt>self-tests</dt>")[1].split("</dd>")[0]
-    assert "next short test Sat 2026-10-17 01:00, next long test Tue 2027-01-19 01:00" in wd
+    # whenever this runs: the 17th of some month at 01:00, and a 19 January at 01:00
+    assert re.search(r"next short test \w{3} \d{4}-\d\d-17 01:00, next long test \w{3} \d{4}-01-19 01:00", wd)
     assert "(atlas's clock, America/New_York)" in wd and "the drive says its long test takes 24.6 hours" in wd
     assert "in atlas's smartd.conf: <code>-s (S/../17/./01|L/01/19/./01)</code>" in wd
     assert "last: Short offline, Completed without error" in wd
