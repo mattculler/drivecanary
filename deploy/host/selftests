@@ -68,7 +68,9 @@ talks() { # talks DEVICE: smartctl can open it and it answers
 }
 
 can_test() { # can_test DEVICE: false when the drive says it runs no self-tests (SCSI and the silent: assumed to)
-  if smartctl -j -c "$1" 2>/dev/null | grep -q '"self_tests_supported": false'; then
+  # smartctl says "No Self-test supported", or, of a drive whose offline capabilities are all zero, only
+  # "Offline data collection not supported": self-tests are one of those capabilities
+  if smartctl -c "$1" 2>/dev/null | grep -Eq 'No Self-test supported|Offline data collection not supported'; then
     echo "selftests: $1 says it runs no self-tests; it is left out" >&2
     return 1
   fi
@@ -95,13 +97,20 @@ overdue() { # overdue DEVICE: the hub would warn that this drive's schedule has 
   case "$out" in *'"protocol": "ATA"'*) ;; *) return 1 ;; esac  # asleep, or not a drive whose log is read
   poh=$(printf '%s\n' "$out" | awk '/"power_on_time"/ { f = 1 } f && /"hours"/ { gsub(/[^0-9]/, ""); print; exit }')
   [ -n "$poh" ] || return 1
-  last=$(printf '%s\n' "$out" | awk '/"lifetime_hours"/ { gsub(/[^0-9]/, ""); print; exit }')
-  if [ -z "$last" ]; then
+  # the log counts the hour in sixteen bits: 42 on a drive of 65,592 hours was 14 hours ago. The newest test
+  # is the first listed; on a drive too young for the hour to have come round it is the least age anywhere
+  # in the log, since some firmware lists its tests out of order (as the hub reads it: smart.py).
+  age=$(printf '%s\n' "$out" | awk -v poh="$poh" '
+    /"lifetime_hours"/ {
+      gsub(/[^0-9]/, ""); a = (poh - $0 + 65536) % 65536
+      if (n++ == 0 || (poh > 0 && poh < 65536 && a < best)) best = a
+    }
+    END { if (n) print best }')
+  if [ -z "$age" ]; then
     [ "$poh" -gt "$CATCHUP_HOURS" ]
     return
   fi
-  # the log counts the hour in sixteen bits: 42 on a drive of 65,592 hours was 14 hours ago
-  [ $(( (poh - last + 65536) % 65536 )) -gt "$CATCHUP_HOURS" ]
+  [ "$age" -gt "$CATCHUP_HOURS" ]
 }
 
 # one drive after another: a test ends before the next starts, so no two drives of a pool test at once

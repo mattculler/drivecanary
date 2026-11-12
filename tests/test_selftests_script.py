@@ -39,7 +39,8 @@ class Box:
             "for last; do :; done\n"
             'case "$*" in *silent*) exit 2 ;; esac\n'
             f'case "$*" in *"-t short"*) echo "$last" >> "{root}/started"; echo "Testing has begun."; exit 0 ;; esac\n'
-            f'case "$*" in *-j*) f="{root}/smart/${{last##*/}}.json"; [ -f "$f" ] && cat "$f" ;; esac\n'
+            f'case "$*" in *-j*) f="{root}/smart/${{last##*/}}.json"; [ -f "$f" ] && cat "$f" ;;\n'
+            f'  *-c*) f="{root}/smart/${{last##*/}}.caps"; [ -f "$f" ] && cat "$f" ;; esac\n'
             "exit 0\n",
         )
         _shim(self.bin / "logger", f'cat >> "{root}/syslog"\n')
@@ -203,6 +204,7 @@ def _tested(hours_ago: int | None, power_on: int = 14551) -> dict[str, Any]:
         doc["ata_smart_self_test_log"]["extended"]["table"] = []
     else:
         table[0]["lifetime_hours"] = (power_on - hours_ago) % 65536
+        del table[1:]  # that test alone: the fixture's older ones are at hours of its own
     return doc
 
 
@@ -238,12 +240,25 @@ def test_on_opnsense_too(tmp_path: Path) -> None:
 
 def test_a_drive_that_runs_no_self_tests_is_left_out(box: Box) -> None:
     # some SATA SSDs say so; a schedule for one never runs, and a catch-up test cannot start
-    cannot = _tested(None)
-    cannot["ata_smart_data"]["capabilities"]["self_tests_supported"] = False
-    box.says("ata-ST20000NM007D-3DJ103_ZXA00003", cannot)
+    (box.root / "smart" / "ata-ST20000NM007D-3DJ103_ZXA00003.caps").write_text(
+        "Offline data collection\ncapabilities: \t\t\t (0x11) SMART execute Offline immediate.\n"
+        "\t\t\t\t\tNo Self-test supported.\n"
+    )
+    # and one whose capabilities are all zero says only this (a KIOXIA EXCERIA does)
+    (box.root / "smart" / "scsi-35000c500a1b2c3d4.caps").write_text(
+        "Offline data collection\ncapabilities: \t\t\t (0x00) \tOffline data collection not supported.\n"
+    )
     box.says("ata-ST20000NM007D-3DJ103_ZXA00001", _tested(None))  # can, and never has: caught up
     cp = box.run("apply")
     assert cp.returncode == 0, cp.stderr
-    assert "ZXA00003 says it runs no self-tests; it is left out" in cp.stderr
-    assert "ata-ST20000NM007D-3DJ103_ZXA00003" not in box.schedules()
+    assert cp.stderr.count("says it runs no self-tests; it is left out") == 2
+    assert set(box.schedules()) == {"ata-ST20000NM007D-3DJ103_ZXA00001", "DEVICESCAN"}
     assert box.started() == ["ata-ST20000NM007D-3DJ103_ZXA00001"]
+
+
+def test_a_log_listed_out_of_order_is_read_by_its_hours(box: Box) -> None:
+    doc = _tested(500)  # the newest test, 21 days ago...
+    table = doc["ata_smart_self_test_log"]["extended"]["table"]
+    table.insert(0, dict(table[0], lifetime_hours=2000))  # ...listed after one from 12,551 hours ago
+    box.says("ata-ST20000NM007D-3DJ103_ZXA00001", doc)
+    assert box.run("apply").returncode == 0 and box.started() == [], "not overdue: no catch-up test"
